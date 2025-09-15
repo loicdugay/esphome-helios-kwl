@@ -32,6 +32,9 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_temperature_exhaust_sensor(sensor::Sensor* sensor) { m_temperature_exhaust = sensor; }
   void set_temperature_inside_sensor(sensor::Sensor* sensor) { m_temperature_inside = sensor; }
   void set_temperature_incoming_sensor(sensor::Sensor* sensor) { m_temperature_incoming = sensor; }
+  void set_humidity_sensor1(sensor::Sensor *sensor) { m_humidity_sensor1 = sensor; }
+  void set_humidity_sensor2(sensor::Sensor *sensor) { m_humidity_sensor2 = sensor; }
+
 
   void set_power_state_sensor(binary_sensor::BinarySensor* sensor) { m_power_state = sensor; }
   void set_bypass_state_sensor(binary_sensor::BinarySensor* sensor) { m_bypass_state = sensor; }
@@ -46,6 +49,8 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void poll_temperature_exhaust();
   void poll_temperature_inside();
   void poll_temperature_incoming();
+  void poll_humidity_sensors1();
+  void poll_humidity_sensors2();
   void poll_fan_speed();
   void poll_states();
 
@@ -74,6 +79,9 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   sensor::Sensor* m_temperature_exhaust{nullptr};
   sensor::Sensor* m_temperature_inside{nullptr};
   sensor::Sensor* m_temperature_incoming{nullptr};
+  sensor::Sensor *m_humidity_sensor1{nullptr};
+  sensor::Sensor *m_humidity_sensor2{nullptr};
+
 
   binary_sensor::BinarySensor* m_power_state{nullptr};
   binary_sensor::BinarySensor* m_bypass_state{nullptr};

@@ -44,6 +44,15 @@ void HeliosKwlComponent::setup() {
     m_pollers.push_back([this]() { poll_fan_speed(); });
   }
 
+  if (m_humidity_sensor1 != nullptr) {
+    m_pollers.push_back([this]() { poll_humidity_sensors1(); });
+  }
+
+  if (m_humidity_sensor2 != nullptr) {
+    m_pollers.push_back([this]() { poll_humidity_sensors2(); });
+  }
+
+
   const std::vector<const EntityBase*> states{m_power_state,       m_bypass_state,    m_winter_mode_switch,
                                               m_heating_indicator, m_fault_indicator, m_service_reminder};
   if (std::any_of(states.cbegin(), states.cend(), [](const EntityBase* pointer) { return pointer != nullptr; })) {
@@ -71,6 +80,8 @@ void HeliosKwlComponent::dump_config() {
   LOG_SENSOR("  ", "Temperature exhaust", m_temperature_exhaust);
   LOG_SENSOR("  ", "Temperature inside", m_temperature_inside);
   LOG_SENSOR("  ", "Temperature incoming", m_temperature_incoming);
+  LOG_SENSOR("  ", "Humidity Sensor 1", humidity1);
+  LOG_SENSOR("  ", "Humidity Sensor 2", humidity2);
   LOG_BINARY_SENSOR("  ", "Power state", m_power_state);
   LOG_BINARY_SENSOR("  ", "Bypass state", m_bypass_state);
   LOG_BINARY_SENSOR("  ", "Fault indicator", m_fault_indicator);
@@ -114,18 +125,6 @@ void HeliosKwlComponent::set_state_flag(uint8_t bit, bool state) {
 }
 
 void HeliosKwlComponent::poll_temperature_outside() {
-  // Sensor 1 → register 0x2F
-  if (const auto value = poll_register(0x2F)) {
-    float humidity1 = (*value - 51) / 2.04f;
-    ESP_LOGI("ash helios", "Humidity Sensor 1: %.2f %%", humidity1);
-  }
-
-  // Sensor 2 → register 0x30
-  if (const auto value = poll_register(0x30)) {
-    float humidity2 = (*value - 51) / 2.04f;
-    ESP_LOGI("ash helios", "Humidity Sensor 2: %.2f %%", humidity2);
-  }
-
   if (const auto value = poll_register(0x32)) {
     m_temperature_outside->publish_state(TEMPERATURE[*value]);
   }
@@ -152,6 +151,22 @@ void HeliosKwlComponent::poll_temperature_incoming() {
 void HeliosKwlComponent::poll_fan_speed() {
   if (const auto value = poll_register(0x29)) {
     m_fan_speed->publish_state(count_ones(*value));
+  }
+}
+
+void HeliosKwlComponent::poll_humidity_sensors1() {
+    if (const auto value = poll_register(0x2F)) {
+      float humidity1 = (*value - 51) / 2.04f;
+      m_humidity_sensor1->publish_state(humidity1);
+      ESP_LOGD(TAG, "Humidity Sensor 1: %.2f %%", humidity1);
+    }
+}
+
+void HeliosKwlComponent::poll_humidity_sensors2() {
+  if (const auto value = poll_register(0x30)) {
+    float humidity2 = (*value - 51) / 2.04f;
+    m_humidity_sensor2->publish_state(humidity2);
+    ESP_LOGD(TAG, "Humidity Sensor 2: %.2f %%", humidity2);
   }
 }
 

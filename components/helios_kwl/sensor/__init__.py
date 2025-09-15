@@ -25,6 +25,14 @@ TYPES = {
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=0,
     ),
+    "humidity_sensor1": sensor.sensor_schema(
+        unit_of_measurement=UNIT_PERCENT,
+        accuracy_decimals=1,
+    ),
+    "humidity_sensor2": sensor.sensor_schema(
+        unit_of_measurement=UNIT_PERCENT,
+        accuracy_decimals=1,
+    ),
 }
 
 CONFIG_SCHEMA = HELIOS_KWL_COMPONENT_SCHEMA.extend({cv.Optional(type): schema for type, schema in TYPES.items()})
