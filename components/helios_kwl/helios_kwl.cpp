@@ -80,8 +80,8 @@ void HeliosKwlComponent::dump_config() {
   LOG_SENSOR("  ", "Temperature exhaust", m_temperature_exhaust);
   LOG_SENSOR("  ", "Temperature inside", m_temperature_inside);
   LOG_SENSOR("  ", "Temperature incoming", m_temperature_incoming);
-  LOG_SENSOR("  ", "Humidity Sensor 1", humidity1);
-  LOG_SENSOR("  ", "Humidity Sensor 2", humidity2);
+  LOG_SENSOR("  ", "Humidity Sensor 1", m_humidity_sensor1);
+  LOG_SENSOR("  ", "Humidity Sensor 2", m_humidity_sensor2);
   LOG_BINARY_SENSOR("  ", "Power state", m_power_state);
   LOG_BINARY_SENSOR("  ", "Bypass state", m_bypass_state);
   LOG_BINARY_SENSOR("  ", "Fault indicator", m_fault_indicator);
