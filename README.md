@@ -1,4 +1,4 @@
-# ESPHome / Helios KWL
+# Ash ESPHome / Helios KWL
 
 ESPHome integration for Helios KWL via RS485.
 
