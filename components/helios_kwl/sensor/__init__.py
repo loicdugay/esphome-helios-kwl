@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
-from esphome.const import UNIT_CELSIUS
+from esphome.const import UNIT_CELSIUS, UNIT_PERCENT
 
 from .. import CONF_HELIOS_KWL_ID, HELIOS_KWL_COMPONENT_SCHEMA
 
