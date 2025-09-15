@@ -158,7 +158,6 @@ void HeliosKwlComponent::poll_humidity_sensors1() {
     if (const auto value = poll_register(0x2F)) {
       float humidity1 = (*value - 51) / 2.04f;
       m_humidity_sensor1->publish_state(humidity1);
-      ESP_LOGD(TAG, "Humidity Sensor 1: %.2f %%", humidity1);
     }
 }
 
@@ -166,7 +165,6 @@ void HeliosKwlComponent::poll_humidity_sensors2() {
   if (const auto value = poll_register(0x30)) {
     float humidity2 = (*value - 51) / 2.04f;
     m_humidity_sensor2->publish_state(humidity2);
-    ESP_LOGD(TAG, "Humidity Sensor 2: %.2f %%", humidity2);
   }
 }
 
