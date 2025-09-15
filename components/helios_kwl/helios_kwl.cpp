@@ -114,6 +114,18 @@ void HeliosKwlComponent::set_state_flag(uint8_t bit, bool state) {
 }
 
 void HeliosKwlComponent::poll_temperature_outside() {
+  // Sensor 1 → register 0x2F
+  if (const auto value = poll_register(0x2F)) {
+    float humidity1 = (*value - 51) / 2.04f;
+    ESP_LOGI("ash helios", "Humidity Sensor 1: %.2f %%", humidity1);
+  }
+
+  // Sensor 2 → register 0x30
+  if (const auto value = poll_register(0x30)) {
+    float humidity2 = (*value - 51) / 2.04f;
+    ESP_LOGI("ash helios", "Humidity Sensor 2: %.2f %%", humidity2);
+  }
+
   if (const auto value = poll_register(0x32)) {
     m_temperature_outside->publish_state(TEMPERATURE[*value]);
   }
