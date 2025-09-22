@@ -73,6 +73,7 @@ void HeliosKwlComponent::update() {
   // }
   for (auto &poller : m_pollers) {
     poller();  // call all pollers in one cycle
+    delay(20);
   }
 }
 
