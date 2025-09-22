@@ -63,13 +63,16 @@ void HeliosKwlComponent::setup() {
 }
 
 void HeliosKwlComponent::update() {
-  if (m_current_poller != m_pollers.cend()) {
-    (*m_current_poller)();
-    // Move to the next polling function
-    std::advance(m_current_poller, 1);
-  } else {
-    // Start again from the beginning
-    m_current_poller = m_pollers.cbegin();
+  // if (m_current_poller != m_pollers.cend()) {
+  //   (*m_current_poller)();
+  //   // Move to the next polling function
+  //   std::advance(m_current_poller, 1);
+  // } else {
+  //   // Start again from the beginning
+  //   m_current_poller = m_pollers.cbegin();
+  // }
+  for (auto &poller : m_pollers) {
+    poller();  // call all pollers in one cycle
   }
 }
 
