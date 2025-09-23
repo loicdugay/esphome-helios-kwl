@@ -24,6 +24,12 @@ const int HeliosKwlComponent::TEMPERATURE[] = {
 void HeliosKwlComponent::setup() {
   ESP_LOGI(TAG, "setup()");
 
+  const std::vector<const EntityBase*> states{m_power_state,       m_bypass_state,    m_winter_mode_switch,
+                                              m_heating_indicator, m_fault_indicator, m_service_reminder};
+  if (std::any_of(states.cbegin(), states.cend(), [](const EntityBase* pointer) { return pointer != nullptr; })) {
+    m_pollers.push_back([&]() { poll_states(); });
+  }
+
   if (m_temperature_outside != nullptr) {
     m_pollers.push_back([this]() { poll_temperature_outside(); });
   }
@@ -50,13 +56,6 @@ void HeliosKwlComponent::setup() {
 
   if (m_humidity_sensor2 != nullptr) {
     m_pollers.push_back([this]() { poll_humidity_sensors2(); });
-  }
-
-
-  const std::vector<const EntityBase*> states{m_power_state,       m_bypass_state,    m_winter_mode_switch,
-                                              m_heating_indicator, m_fault_indicator, m_service_reminder};
-  if (std::any_of(states.cbegin(), states.cend(), [](const EntityBase* pointer) { return pointer != nullptr; })) {
-    m_pollers.push_back([&]() { poll_states(); });
   }
 
   m_current_poller = m_pollers.cbegin();
