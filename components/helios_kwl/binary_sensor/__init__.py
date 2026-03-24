@@ -11,6 +11,8 @@ TYPES = {
     "heating_indicator": binary_sensor.binary_sensor_schema(device_class=DEVICE_CLASS_HEAT),
     "fault_indicator": binary_sensor.binary_sensor_schema(device_class=DEVICE_CLASS_PROBLEM),
     "service_reminder": binary_sensor.binary_sensor_schema(),
+    "co2_alarm": binary_sensor.binary_sensor_schema(device_class=DEVICE_CLASS_PROBLEM),
+    "freeze_alarm": binary_sensor.binary_sensor_schema(device_class=DEVICE_CLASS_PROBLEM),
 }
 
 CONFIG_SCHEMA = HELIOS_KWL_COMPONENT_SCHEMA.extend({cv.Optional(type): schema for type, schema in TYPES.items()})

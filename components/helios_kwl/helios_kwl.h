@@ -41,7 +41,9 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_heating_indicator_sensor(binary_sensor::BinarySensor* sensor) { m_heating_indicator = sensor; }
   void set_fault_indicator_sensor(binary_sensor::BinarySensor* sensor) { m_fault_indicator = sensor; }
   void set_service_reminder_sensor(binary_sensor::BinarySensor* sensor) { m_service_reminder = sensor; }
-
+  void set_co2_alarm_sensor(binary_sensor::BinarySensor* sensor) { m_co2_alarm = sensor; }      // NOUVEAU
+  void set_freeze_alarm_sensor(binary_sensor::BinarySensor* sensor) { m_freeze_alarm = sensor; } // NOUVEAU
+  
   void set_winter_mode_switch(switch_::Switch* switch_) { m_winter_mode_switch = switch_; }
 
  private:
@@ -53,6 +55,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void poll_humidity_sensors2();
   void poll_fan_speed();
   void poll_states();
+  void poll_alarms();  // NOUVEAU
 
   optional<uint8_t> poll_register(uint8_t address);
 
@@ -88,6 +91,8 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   binary_sensor::BinarySensor* m_heating_indicator{nullptr};
   binary_sensor::BinarySensor* m_fault_indicator{nullptr};
   binary_sensor::BinarySensor* m_service_reminder{nullptr};
+  binary_sensor::BinarySensor* m_co2_alarm{nullptr};     // NOUVEAU
+  binary_sensor::BinarySensor* m_freeze_alarm{nullptr};  // NOUVEAU
 
   switch_::Switch* m_winter_mode_switch{nullptr};
 

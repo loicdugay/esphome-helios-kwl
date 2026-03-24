@@ -30,6 +30,11 @@ void HeliosKwlComponent::setup() {
     m_pollers.push_back([&]() { poll_states(); });
   }
 
+  const std::vector<const EntityBase*> alarms{m_co2_alarm, m_freeze_alarm};
+  if (std::any_of(alarms.cbegin(), alarms.cend(), [](const EntityBase* p) { return p != nullptr; })) {
+    m_pollers.push_back([this]() { poll_alarms(); });
+  }
+
   if (m_temperature_outside != nullptr) {
     m_pollers.push_back([this]() { poll_temperature_outside(); });
   }
@@ -85,6 +90,8 @@ void HeliosKwlComponent::dump_config() {
   LOG_BINARY_SENSOR("  ", "Bypass state", m_bypass_state);
   LOG_BINARY_SENSOR("  ", "Fault indicator", m_fault_indicator);
   LOG_BINARY_SENSOR("  ", "Service reminder", m_service_reminder);
+  LOG_BINARY_SENSOR("  ", "CO2 alarm", m_co2_alarm);
+  LOG_BINARY_SENSOR("  ", "Freeze alarm", m_freeze_alarm);
 }
 
 void HeliosKwlComponent::set_fan_speed(float speed) {
@@ -291,6 +298,17 @@ void HeliosKwlComponent::flush_read_buffer() {
 uint8_t HeliosKwlComponent::count_ones(uint8_t byte) {
   static const uint8_t NIBBLE_LOOKUP[16] = {0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4};
   return NIBBLE_LOOKUP[byte & 0x0F] + NIBBLE_LOOKUP[byte >> 4];
+}
+
+void HeliosKwlComponent::poll_alarms() {
+  if (const auto value = poll_register(0x6D)) {
+    if (m_co2_alarm != nullptr) {
+      m_co2_alarm->publish_state(*value & (0x01 << 6));  // bit 6 = CO2 alarm
+    }
+    if (m_freeze_alarm != nullptr) {
+      m_freeze_alarm->publish_state(*value & (0x01 << 7));  // bit 7 = freeze risk
+    }
+  }
 }
 
 }  // namespace helios_kwl_component
