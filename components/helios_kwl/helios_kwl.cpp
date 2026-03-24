@@ -69,10 +69,15 @@ void HeliosKwlComponent::setup() {
 void HeliosKwlComponent::update() {
   if (m_pollers.empty()) return;
 
-  // Priority: if a speed change was just sent, poll speed immediately
+  // Priority polls after a command was sent
   if (m_speed_poll_pending) {
     m_speed_poll_pending = false;
     poll_fan_speed();
+    return;
+  }
+  if (m_state_poll_pending) {
+    m_state_poll_pending = false;
+    poll_states();
     return;
   }
 
@@ -129,6 +134,7 @@ void HeliosKwlComponent::set_state_flag(uint8_t bit, bool state) {
       }
       if (set_value(0xA3, *value)) {
         ESP_LOGD(TAG, "Wrote state flag to: %x", *value);
+        m_state_poll_pending = true;  // Re-poll states at next cycle
       } else {
         ESP_LOGE(TAG, "Failed to set state flag");
       }

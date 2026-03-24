@@ -50,6 +50,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
 
  private:
   bool m_speed_poll_pending{false};
+  bool m_state_poll_pending{false};
   
   void poll_temperature_outside();
   void poll_temperature_exhaust();
