@@ -69,6 +69,13 @@ void HeliosKwlComponent::setup() {
 void HeliosKwlComponent::update() {
   if (m_pollers.empty()) return;
 
+  // Priority: if a speed change was just sent, poll speed immediately
+  if (m_speed_poll_pending) {
+    m_speed_poll_pending = false;
+    poll_fan_speed();
+    return;
+  }
+
   if (m_current_poller == m_pollers.cend()) {
     m_current_poller = m_pollers.cbegin();
   }
@@ -103,6 +110,7 @@ void HeliosKwlComponent::set_fan_speed(float speed) {
     if (set_value(0x29, speed_byte)) {
       ESP_LOGD(TAG, "Wrote speed: %02x", speed_byte);
       set_state_flag(0, true);
+      m_speed_poll_pending = true;  // Re-poll speed at next update cycle
     } else {
       ESP_LOGE(TAG, "Failed to set fan speed");
     }
@@ -237,46 +245,34 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t address) {
 }
 
 bool HeliosKwlComponent::set_value(uint8_t address, uint8_t value) {
+  // Helios protocol: 3-message write sequence (Annex B)
+  // The VMC confirms by updating the register value, readable at next poll.
+  // We do NOT wait for ACK bytes as they are unreliable on a busy bus.
+
   // Message 1: Broadcast to all remote controls (0x20)
-  Datagram msg1 = {0x01, ADDRESS, 0x20, address, value};
+  Datagram msg1 = {0x01, ADDRESS, 0x20, address, value, 0};
   msg1[5] = checksum(msg1.cbegin(), std::prev(msg1.cend()));
   flush_read_buffer();
   write_array(msg1);
   flush();
-  delay(10);
+  delay(5);
 
   // Message 2: Broadcast to all motherboards (0x10)
-  Datagram msg2 = {0x01, ADDRESS, 0x10, address, value};
+  Datagram msg2 = {0x01, ADDRESS, 0x10, address, value, 0};
   msg2[5] = checksum(msg2.cbegin(), std::prev(msg2.cend()));
-  flush_read_buffer();
   write_array(msg2);
   flush();
-  delay(10);
+  delay(5);
 
   // Message 3: Direct to motherboard 1 (0x11) + doubled checksum
-  Datagram msg3 = {0x01, ADDRESS, MAINBOARD, address, value};
+  Datagram msg3 = {0x01, ADDRESS, MAINBOARD, address, value, 0};
   msg3[5] = checksum(msg3.cbegin(), std::prev(msg3.cend()));
-  flush_read_buffer();
   write_array(msg3);
   write_byte(msg3[5]);  // Checksum sent twice per Helios protocol
   flush();
 
-  // Wait for acknowledgement
-  delay(10);
-  int retry = 3;
-  while (retry-- > 0) {
-    if (available()) {
-      uint8_t ack = read();
-      if (ack == msg3[5]) {
-        ESP_LOGD(TAG, "Write acknowledged for register 0x%02X", address);
-        return true;
-      }
-    }
-    delay(10);
-  }
-
-  ESP_LOGW(TAG, "No acknowledgement for register 0x%02X after 3 retries", address);
-  return false;
+  ESP_LOGD(TAG, "Wrote register 0x%02X = 0x%02X (3-message sequence)", address, value);
+  return true;
 }
 
 void HeliosKwlComponent::flush_read_buffer() {

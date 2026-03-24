@@ -24,6 +24,8 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void update() override;
   void dump_config() override;
 
+  void request_speed_poll() { m_speed_poll_pending = true; }
+
   void set_fan_speed(float speed);
   void set_state_flag(uint8_t bit, bool state);
 
@@ -47,6 +49,8 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_winter_mode_switch(switch_::Switch* switch_) { m_winter_mode_switch = switch_; }
 
  private:
+  bool m_speed_poll_pending{false};
+  
   void poll_temperature_outside();
   void poll_temperature_exhaust();
   void poll_temperature_inside();
