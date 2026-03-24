@@ -62,18 +62,14 @@ void HeliosKwlComponent::setup() {
 }
 
 void HeliosKwlComponent::update() {
-  // if (m_current_poller != m_pollers.cend()) {
-  //   (*m_current_poller)();
-  //   // Move to the next polling function
-  //   std::advance(m_current_poller, 1);
-  // } else {
-  //   // Start again from the beginning
-  //   m_current_poller = m_pollers.cbegin();
-  // }
-  for (auto &poller : m_pollers) {
-    poller();  // call all pollers in one cycle
-    delay(20);
+  if (m_pollers.empty()) return;
+
+  if (m_current_poller == m_pollers.cend()) {
+    m_current_poller = m_pollers.cbegin();
   }
+
+  (*m_current_poller)();
+  std::advance(m_current_poller, 1);
 }
 
 void HeliosKwlComponent::dump_config() {
@@ -159,14 +155,24 @@ void HeliosKwlComponent::poll_fan_speed() {
 
 void HeliosKwlComponent::poll_humidity_sensors1() {
     if (const auto value = poll_register(0x2F)) {
+      if (*value < 0x33) {
+        m_humidity_sensor1->publish_state(0.0f);
+        return;
+      }
       float humidity1 = (*value - 51) / 2.04f;
+      if (humidity1 > 100.0f) humidity1 = 100.0f;
       m_humidity_sensor1->publish_state(humidity1);
     }
 }
 
 void HeliosKwlComponent::poll_humidity_sensors2() {
   if (const auto value = poll_register(0x30)) {
+    if (*value < 0x33) {
+      m_humidity_sensor2->publish_state(0.0f);
+      return;
+    }
     float humidity2 = (*value - 51) / 2.04f;
+    if (humidity2 > 100.0f) humidity2 = 100.0f;
     m_humidity_sensor2->publish_state(humidity2);
   }
 }
@@ -224,29 +230,59 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t address) {
 }
 
 bool HeliosKwlComponent::set_value(uint8_t address, uint8_t value) {
-  Datagram temp = {0x01, ADDRESS, MAINBOARD, address, value};
-  temp[5] = checksum(temp.cbegin(), temp.cend());
+  // Message 1: Broadcast to all remote controls (0x20)
+  Datagram msg1 = {0x01, ADDRESS, 0x20, address, value};
+  msg1[5] = checksum(msg1.cbegin(), std::prev(msg1.cend()));
+  flush_read_buffer();
+  write_array(msg1);
+  flush();
+  delay(10);
 
-  // To the mainboard
+  // Message 2: Broadcast to all motherboards (0x10)
+  Datagram msg2 = {0x01, ADDRESS, 0x10, address, value};
+  msg2[5] = checksum(msg2.cbegin(), std::prev(msg2.cend()));
+  flush_read_buffer();
+  write_array(msg2);
+  flush();
+  delay(10);
+
+  // Message 3: Direct to motherboard 1 (0x11) + doubled checksum
+  Datagram msg3 = {0x01, ADDRESS, MAINBOARD, address, value};
+  msg3[5] = checksum(msg3.cbegin(), std::prev(msg3.cend()));
+  flush_read_buffer();
+  write_array(msg3);
+  write_byte(msg3[5]);  // Checksum sent twice per Helios protocol
+  flush();
+
+  // Wait for acknowledgement
+  delay(10);
   int retry = 3;
-  do {
-    // Flush read buffer
-    flush_read_buffer();
-    // Write
-    write_array(temp);
-    flush();
-  } while (read() != temp[5] && retry-- > 0);
+  while (retry-- > 0) {
+    if (available()) {
+      uint8_t ack = read();
+      if (ack == msg3[5]) {
+        ESP_LOGD(TAG, "Write acknowledged for register 0x%02X", address);
+        return true;
+      }
+    }
+    delay(10);
+  }
 
-  return retry >= 0;
+  ESP_LOGW(TAG, "No acknowledgement for register 0x%02X after 3 retries", address);
+  return false;
 }
 
 void HeliosKwlComponent::flush_read_buffer() {
-  // Flush read buffer and wait for the bus to be quiet for 10 ms
-  uint32_t last_time = millis();
-  while (millis() - last_time < 10) {
+  const uint32_t start = millis();
+  uint32_t last_byte_time = millis();
+  while (millis() - last_byte_time < 10) {
+    if (millis() - start > 200) {
+      ESP_LOGW(TAG, "flush_read_buffer: safety timeout (200ms)");
+      break;
+    }
     while (available()) {
       read();
-      last_time = millis();
+      last_byte_time = millis();
     }
     yield();
   }
