@@ -24,7 +24,10 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void update() override;
   void dump_config() override;
 
-  void request_speed_poll() { m_speed_poll_pending = true; }
+  // When true, set_fan_speed() and set_state_flag() skip RS485 writes.
+  // Used by YAML to sync the fan entity from sensor readings without
+  // sending commands back to the VMC.
+  bool sync_in_progress{false};
 
   void set_fan_speed(float speed);
   void set_state_flag(uint8_t bit, bool state);
@@ -37,21 +40,20 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_humidity1_sensor(sensor::Sensor *sensor) { m_humidity_sensor1 = sensor; }
   void set_humidity2_sensor(sensor::Sensor *sensor) { m_humidity_sensor2 = sensor; }
 
-
   void set_power_state_sensor(binary_sensor::BinarySensor* sensor) { m_power_state = sensor; }
   void set_bypass_state_sensor(binary_sensor::BinarySensor* sensor) { m_bypass_state = sensor; }
   void set_heating_indicator_sensor(binary_sensor::BinarySensor* sensor) { m_heating_indicator = sensor; }
   void set_fault_indicator_sensor(binary_sensor::BinarySensor* sensor) { m_fault_indicator = sensor; }
   void set_service_reminder_sensor(binary_sensor::BinarySensor* sensor) { m_service_reminder = sensor; }
-  void set_co2_alarm_sensor(binary_sensor::BinarySensor* sensor) { m_co2_alarm = sensor; }      // NOUVEAU
-  void set_freeze_alarm_sensor(binary_sensor::BinarySensor* sensor) { m_freeze_alarm = sensor; } // NOUVEAU
-  
+  void set_co2_alarm_sensor(binary_sensor::BinarySensor* sensor) { m_co2_alarm = sensor; }
+  void set_freeze_alarm_sensor(binary_sensor::BinarySensor* sensor) { m_freeze_alarm = sensor; }
+
   void set_winter_mode_switch(switch_::Switch* switch_) { m_winter_mode_switch = switch_; }
 
  private:
   bool m_speed_poll_pending{false};
   bool m_state_poll_pending{false};
-  
+
   void poll_temperature_outside();
   void poll_temperature_exhaust();
   void poll_temperature_inside();
@@ -60,7 +62,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void poll_humidity_sensors2();
   void poll_fan_speed();
   void poll_states();
-  void poll_alarms();  // NOUVEAU
+  void poll_alarms();
 
   optional<uint8_t> poll_register(uint8_t address);
 
@@ -90,14 +92,13 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   sensor::Sensor *m_humidity_sensor1{nullptr};
   sensor::Sensor *m_humidity_sensor2{nullptr};
 
-
   binary_sensor::BinarySensor* m_power_state{nullptr};
   binary_sensor::BinarySensor* m_bypass_state{nullptr};
   binary_sensor::BinarySensor* m_heating_indicator{nullptr};
   binary_sensor::BinarySensor* m_fault_indicator{nullptr};
   binary_sensor::BinarySensor* m_service_reminder{nullptr};
-  binary_sensor::BinarySensor* m_co2_alarm{nullptr};     // NOUVEAU
-  binary_sensor::BinarySensor* m_freeze_alarm{nullptr};  // NOUVEAU
+  binary_sensor::BinarySensor* m_co2_alarm{nullptr};
+  binary_sensor::BinarySensor* m_freeze_alarm{nullptr};
 
   switch_::Switch* m_winter_mode_switch{nullptr};
 

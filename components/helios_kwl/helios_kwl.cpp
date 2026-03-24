@@ -69,7 +69,7 @@ void HeliosKwlComponent::setup() {
 void HeliosKwlComponent::update() {
   if (m_pollers.empty()) return;
 
-  // Priority polls after a command was sent
+  // Priority: re-poll speed/states immediately after a command was sent
   if (m_speed_poll_pending) {
     m_speed_poll_pending = false;
     poll_fan_speed();
@@ -107,6 +107,12 @@ void HeliosKwlComponent::dump_config() {
 }
 
 void HeliosKwlComponent::set_fan_speed(float speed) {
+  // When sync_in_progress is true, this call comes from the YAML syncing
+  // the fan entity with the sensor reading. No RS485 write needed.
+  if (sync_in_progress) {
+    return;
+  }
+
   if (speed == 0.f) {
     set_state_flag(0, false);
   } else {
@@ -115,7 +121,7 @@ void HeliosKwlComponent::set_fan_speed(float speed) {
     if (set_value(0x29, speed_byte)) {
       ESP_LOGD(TAG, "Wrote speed: %02x", speed_byte);
       set_state_flag(0, true);
-      m_speed_poll_pending = true;  // Re-poll speed at next update cycle
+      m_speed_poll_pending = true;
     } else {
       ESP_LOGE(TAG, "Failed to set fan speed");
     }
@@ -123,6 +129,11 @@ void HeliosKwlComponent::set_fan_speed(float speed) {
 }
 
 void HeliosKwlComponent::set_state_flag(uint8_t bit, bool state) {
+  // When sync_in_progress is true, skip RS485 writes.
+  if (sync_in_progress) {
+    return;
+  }
+
   if (auto value = poll_register(0xA3)) {
     if (state == ((*value >> bit) & 0x01)) {
       ESP_LOGD(TAG, "State flag already set");
@@ -134,7 +145,7 @@ void HeliosKwlComponent::set_state_flag(uint8_t bit, bool state) {
       }
       if (set_value(0xA3, *value)) {
         ESP_LOGD(TAG, "Wrote state flag to: %x", *value);
-        m_state_poll_pending = true;  // Re-poll states at next cycle
+        m_state_poll_pending = true;
       } else {
         ESP_LOGE(TAG, "Failed to set state flag");
       }
@@ -240,7 +251,7 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t address) {
         return array[4];
       } else {
         const auto hex = format_hex_pretty(array.data(), array.size());
-        ESP_LOGE(TAG, "Wrong response from mainboard: %s", hex.c_str());
+        ESP_LOGW(TAG, "Wrong response (bus collision?): %s", hex.c_str());
       }
     } else {
       const auto hex = format_hex_pretty(array.data(), array.size());
@@ -305,10 +316,10 @@ uint8_t HeliosKwlComponent::count_ones(uint8_t byte) {
 void HeliosKwlComponent::poll_alarms() {
   if (const auto value = poll_register(0x6D)) {
     if (m_co2_alarm != nullptr) {
-      m_co2_alarm->publish_state(*value & (0x01 << 6));  // bit 6 = CO2 alarm
+      m_co2_alarm->publish_state(*value & (0x01 << 6));
     }
     if (m_freeze_alarm != nullptr) {
-      m_freeze_alarm->publish_state(*value & (0x01 << 7));  // bit 7 = freeze risk
+      m_freeze_alarm->publish_state(*value & (0x01 << 7));
     }
   }
 }

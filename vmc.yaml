@@ -71,6 +71,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/loicdugay/esphome-helios-kwl/
+    refresh: 0s
 
 # ─── Bus I2C (écran tactile + expandeur GPIO) ─────────────────
 
@@ -115,7 +116,7 @@ uart:
 
 helios_kwl:
   id: helios_kwl_0
-  update_interval: 2s   # 1 registre par cycle, cycle complet ~18s
+  update_interval: 1s   # 1 registre par cycle, cycle complet ~9s
 
 # ─── Variables globales ───────────────────────────────────────
 
@@ -153,12 +154,16 @@ sensor:
       id: fan_speed
       on_value:
         then:
+          - lambda: |-
+              id(arc_updating) = true;
+              id(helios_kwl_0).sync_in_progress = true;
           - if:
               condition:
                 binary_sensor.is_on: power_state
               then:
-                - lambda: |-
-                    id(arc_updating) = true;
+                - fan.turn_on:
+                    id: helios_kwl_speed_fan
+                    speed: !lambda "return (int)x;"
                 - lvgl.arc.update:
                     id: fan_speed_arc
                     value: !lambda "return (int)x;"
@@ -168,19 +173,18 @@ sensor:
                       char buf[4];
                       sprintf(buf, "%d", (int)x);
                       return std::string(buf);
-                - lambda: |-
-                    id(arc_updating) = false;
               else:
-                - lambda: |-
-                    id(arc_updating) = true;
+                - fan.turn_off:
+                    id: helios_kwl_speed_fan
                 - lvgl.arc.update:
                     id: fan_speed_arc
                     value: 0
                 - lvgl.label.update:
                     id: label_fan_speed
                     text: "0"
-                - lambda: |-
-                    id(arc_updating) = false;
+          - lambda: |-
+              id(helios_kwl_0).sync_in_progress = false;
+              id(arc_updating) = false;
     temperature_outside:
       name: "Température air extérieur"
       id: sensor_temperature_outside
@@ -274,6 +278,24 @@ binary_sensor:
     power_state:
       name: "État d'alimentation"
       id: power_state
+      on_state:
+        then:
+          - lambda: |-
+              id(arc_updating) = true;
+              id(helios_kwl_0).sync_in_progress = true;
+          - if:
+              condition:
+                lambda: 'return x;'
+              then:
+                - fan.turn_on:
+                    id: helios_kwl_speed_fan
+                    speed: !lambda "return (int)id(fan_speed).state;"
+              else:
+                - fan.turn_off:
+                    id: helios_kwl_speed_fan
+          - lambda: |-
+              id(helios_kwl_0).sync_in_progress = false;
+              id(arc_updating) = false;
     bypass_state:
       name: "État du Bypass"
       id: bypass_state
