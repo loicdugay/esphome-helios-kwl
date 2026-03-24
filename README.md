@@ -438,10 +438,20 @@ esphome:
 
 ---
 
-## Documentation du protocole
+## Documentation
+
+### Liens en ligne
 
 - [Protocole DIGIT RS485 (PDF)](https://wiki.fhem.de/w/images/7/7e/Digit_protocol_english_RS485.pdf) — Annexes A (table NTC) et B (séquences Helios)
 - [FHEM Wiki — Helios KWL](https://wiki.fhem.de/wiki/Helios_KWL) — source communautaire du protocole
+
+### Copies locales (dossier `docs/`)
+
+| Fichier | Description |
+|---------|-------------|
+| [`helios-kwl-ec-300-pro-notice.pdf`](docs/helios-kwl-ec-300-pro-notice.pdf) | Notice constructeur Helios KWL EC 300 Pro (FR pages 45-66) |
+| [`vallox-digit-protocol-rs485.pdf`](docs/vallox-digit-protocol-rs485.pdf) | Protocole DIGIT RS485 — registres, trames, séquences Helios |
+| [`rs485-bus-capture.txt`](docs/rs485-bus-capture.txt) | Capture brute de trames RS485 du bus VMC (référence débogage) |
 
 ---
 

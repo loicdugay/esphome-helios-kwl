@@ -186,7 +186,7 @@ sensor:
               id(helios_kwl_0).sync_in_progress = false;
               id(arc_updating) = false;
     temperature_outside:
-      name: "Température air extérieur"
+      name: "Température extérieure"
       id: sensor_temperature_outside
       filters:
         - exponential_moving_average:
@@ -228,7 +228,7 @@ sensor:
                 format: "%.0f °C"
                 args: [ x ]
     temperature_incoming:
-      name: "Température air soufflé"
+      name: "Température air neuf"
       id: sensor_temperature_incoming
       filters:
         - exponential_moving_average:
@@ -276,7 +276,7 @@ binary_sensor:
   - platform: helios_kwl
     helios_kwl_id: helios_kwl_0
     power_state:
-      name: "État d'alimentation"
+      name: "VMC Marche/Arrêt"
       id: power_state
       on_state:
         then:
@@ -297,7 +297,7 @@ binary_sensor:
               id(helios_kwl_0).sync_in_progress = false;
               id(arc_updating) = false;
     bypass_state:
-      name: "État du Bypass"
+      name: "Mode été"
       id: bypass_state
       on_state:
         then:
@@ -314,7 +314,7 @@ binary_sensor:
                     id: label_bypass
                     text_opa: 30%
     heating_indicator:
-      name: "Indicateur de chauffage"
+      name: "Postchauffage actif"
       id: heating_indicator
       on_state:
         then:
@@ -331,10 +331,10 @@ binary_sensor:
                     id: label_heat
                     text_opa: 30%
     fault_indicator:
-      name: "Indicateur de défaut"
+      name: "Défaut VMC"
       id: fault_indicator
     service_reminder:
-      name: "Maintenance"
+      name: "Maintenance filtre"
       id: service_reminder
       on_state:
         then:
@@ -351,11 +351,11 @@ binary_sensor:
                     id: label_maintenance
                     text_opa: 30%
     co2_alarm:
-      name: "Alarme CO2 élevé"
+      name: "Alarme CO2"
       id: co2_alarm
       icon: "mdi:molecule-co2"
     freeze_alarm:
-      name: "Risque gel échangeur"
+      name: "Protection antigel"
       id: freeze_alarm
       icon: "mdi:snowflake-alert"
 
@@ -375,7 +375,7 @@ fan:
     id: helios_kwl_speed_fan
     output: helios_kwl_speed
     speed_count: 8
-    name: "Vitesse de ventilation"
+    name: "Ventilation VMC"
     restore_mode: RESTORE_DEFAULT_ON
     on_speed_set:
       then:
@@ -427,7 +427,7 @@ output:
 light:
   - platform: monochromatic
     output: backlight_output
-    name: LCD Backlight
+    name: "Rétroéclairage écran"
     id: lcd_backlight
     restore_mode: ALWAYS_ON
     default_transition_length: 500ms
@@ -835,7 +835,7 @@ lvgl:
                         grid_cell_row_pos: 0
                         grid_cell_column_pos: 0
                     - label:
-                        text: "Rejetee"
+                        text: "Rejeté"
                         text_font: roboto_font_20
                         text_color: 0xFFFFFF
                         grid_cell_row_pos: 0
