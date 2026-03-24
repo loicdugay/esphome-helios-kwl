@@ -276,7 +276,7 @@ binary_sensor:
   - platform: helios_kwl
     helios_kwl_id: helios_kwl_0
     power_state:
-      name: "VMC Marche/Arrêt"
+      name: "État de l'alimentation"
       id: power_state
       on_state:
         then:
