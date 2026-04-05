@@ -94,6 +94,7 @@ void HeliosKwlComponent::setup() {
   ADD_POLL(REG_STATES,           2000);   // 0xA3 — power, régulations, mode, filtre
   ADD_POLL(REG_FAN_SPEED,        2000);   // 0x29 — vitesse actuelle
   ADD_POLL(REG_IO_PORT,          3000);   // 0x08 — bypass, préchauffe, ventilateurs
+  // Températures et CO₂ reçus passivement via loop() (broadcasts VMC toutes les ~12s)
   ADD_POLL(REG_BOOST_STATE,      3000);   // 0x71 — boost/cheminée actif
   ADD_POLL(REG_BOOST_REMAINING,  3000);   // 0x79 — timer boost restant
   ADD_POLL(REG_ALARMS,           5000);   // 0x6D — alarmes CO₂ + gel
@@ -136,10 +137,26 @@ void HeliosKwlComponent::setup() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::loop() {
-  // NE PAS lire l'UART ici — cela consommerait les octets de réponse
-  // AVANT que poll_register() / read_array<6>() puisse les lire.
-  // Architecture comme le legacy : tout se passe dans update() → poll_register().
-  // Les broadcasts passifs sont captés dans poll_register() (wrong response ignoré).
+  // Écoute passive des broadcasts RS485 (températures, CO₂...)
+  // La VMC broadcast ces registres toutes les ~12s sans qu'on les demande.
+  // poll_register() appelle flush_rx() avant chaque TX, ce qui vide ce buffer
+  // sans conflit — ESPHome est mono-thread, loop() et update() ne s'entrecroisent pas.
+  accumulate_rx();
+
+  // Règle NASA n°2 : max RX_BUFFER_SIZE/HELIOS_PACKET_LEN paquets par appel
+  const size_t max_packets = RX_BUFFER_SIZE / HELIOS_PACKET_LEN;
+  for (size_t i = 0; i < max_packets && rx_buffer_len_ >= HELIOS_PACKET_LEN; i++) {
+    if (!process_rx_buffer()) {
+      // Pas de paquet valide — décaler d'un octet et sortir
+      if (rx_buffer_len_ > 0) {
+        std::copy(rx_buffer_.begin() + 1,
+                  rx_buffer_.begin() + rx_buffer_len_,
+                  rx_buffer_.begin());
+        rx_buffer_len_--;
+      }
+      break;
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -147,10 +164,10 @@ void HeliosKwlComponent::loop() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::accumulate_rx() {
-  while (available()) {
+  // Règle NASA n°2 : borne supérieure explicite = RX_BUFFER_SIZE octets max par appel
+  for (size_t i = 0; i < RX_BUFFER_SIZE && available(); i++) {
     if (rx_buffer_len_ >= RX_BUFFER_SIZE) {
-      // Buffer plein : décaler pour ne pas bloquer
-      ESP_LOGW(TAG, "RX buffer plein — flush");
+      ESP_LOGW(TAG, "RX buffer plein — reset");
       rx_buffer_len_ = 0;
     }
     uint8_t byte;
@@ -552,15 +569,12 @@ void HeliosKwlComponent::publish_fan_speed(uint8_t value) {
   uint8_t speed = bitmask_to_speed(value);
   ESP_LOGD(TAG, "Vitesse fan bitmask=0x%02X → %u/8", value, speed);
 
+  // Publier uniquement le sensor de lecture — PAS fan.make_call()
+  // fan.make_call() déclencherait HeliosKwlFan::control() → write_register()
+  // → cache mis à jour → prochain poll → publish_fan_speed() → boucle infinie
+  // La synchro fan ↔ sensor est gérée dans le YAML via sensor.on_value
   if (fan_speed_sensor_ != nullptr)
     fan_speed_sensor_->publish_state((float) speed);
-
-  // Synchroniser l'entité fan native
-  if (fan_ != nullptr) {
-    auto call = fan_->make_call();
-    call.set_speed(speed);
-    call.perform();
-  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -578,12 +592,11 @@ void HeliosKwlComponent::publish_states(uint8_t value) {
   bool fault         = (value >> BIT_FAULT)        & 0x01;
   bool filter_maint  = (value >> BIT_FILTER_MAINT) & 0x01;
 
-  // Fan ON/OFF
-  if (fan_ != nullptr) {
-    auto call = fan_->make_call();
-    call.set_state(power_on);
-    call.perform();
-  }
+  // fan.make_call() supprimé — déclenche write_register → boucle infinie
+  // La synchro power ON/OFF ↔ fan est dans le YAML (fan.on_speed_set / sensor.on_value)
+  // power_on est lu mais pas utilisé directement ici (la VMC gère l'état physique)
+  (void) power_on;
+  (void) fault;
 
   // Switches
   if (co2_regulation_ != nullptr)
@@ -921,16 +934,19 @@ void HeliosKwlComponent::flush_rx(uint32_t timeout_ms) {
   // purgés avant d'appeler read_array<6>() pour lire la vraie réponse.
   const uint32_t safety = millis() + 200;  // timeout de sécurité absolu
   uint32_t last_byte_time = millis();
-  while (millis() - last_byte_time < timeout_ms) {
+  // Règle NASA n°2 : borne = 200 itérations max (200ms à 1ms/iter)
+  for (uint32_t iter = 0; iter < 200; iter++) {
     if (millis() > safety) {
       ESP_LOGW(TAG, "flush_rx: safety timeout");
       break;
     }
-    while (available()) {
-      read();  // lire et jeter l'octet (comme le legacy)
+    if (millis() - last_byte_time >= timeout_ms)
+      break;
+    for (size_t i = 0; i < RX_BUFFER_SIZE && available(); i++) {
+      read();
       last_byte_time = millis();
     }
-    yield();  // laisser le scheduler respirer (comme le legacy)
+    yield();
   }
   rx_buffer_len_ = 0;
 }
@@ -958,8 +974,9 @@ bool HeliosKwlComponent::verify_checksum(const uint8_t *data, size_t len) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 uint8_t HeliosKwlComponent::count_ones(uint8_t byte) {
+  // Règle NASA n°2 : borne = 8 bits max (uint8_t)
   uint8_t count = 0;
-  while (byte) {
+  for (uint8_t i = 0; i < 8u; i++) {
     count += (byte & 1u);
     byte >>= 1;
   }
