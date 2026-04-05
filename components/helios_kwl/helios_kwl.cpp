@@ -878,8 +878,10 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries
     // Vider le buffer entrant avant d'envoyer
     flush_rx(5);
 
-    // Envoyer la requête (valeur 0 = demande de lecture dans le protocole Vallox)
-    uint8_t req[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, reg, 0, 0};
+    // Envoyer la requête selon protocole Vallox Annexe B :
+    // "VARIABLE = 00H, DATA = <register code>"
+    // → byte[3]=0x00 (VARIABLE=READ), byte[4]=reg (DATA=registre à lire)
+    uint8_t req[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
     req[5] = checksum(req, 5);
     write_array(req, HELIOS_PACKET_LEN);
     flush();
