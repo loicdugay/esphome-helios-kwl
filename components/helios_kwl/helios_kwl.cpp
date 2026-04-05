@@ -883,7 +883,11 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries
     uint8_t req[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
     req[5] = checksum(req, 5);
     write_array(req, HELIOS_PACKET_LEN);
-    flush();
+    flush();  // attend fin TX
+
+    // Purger les échos TX (RS485 half-duplex : on lit ce qu'on écrit)
+    // Le legacy fait ceci implicitement car flush_read_buffer attend le silence
+    flush_rx(10);  // silence 10ms = échos purgés (6 octets @ 9600 = 6.25ms)
 
     // Lire la réponse avec read_array — même méthode que le code legacy
     // read_array attend les N octets avec le timeout UART natif (RX_TIMEOUT dans vmc.yaml)
@@ -928,13 +932,22 @@ optional<uint8_t> HeliosKwlComponent::get_cached_value(uint8_t reg) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::flush_rx(uint32_t timeout_ms) {
-  uint32_t deadline = millis() + timeout_ms;
-  while (millis() < deadline) {
-    while (available()) {
-      uint8_t discard;
-      read_byte(&discard);
+  // Reproduit le comportement du legacy flush_read_buffer() :
+  // Boucle TANT QUE des octets arrivent + attend silence de timeout_ms.
+  // Ceci garantit que les échos TX (RS485 half-duplex) sont complètement
+  // purgés avant d'appeler read_array<6>() pour lire la vraie réponse.
+  const uint32_t safety = millis() + 200;  // timeout de sécurité absolu
+  uint32_t last_byte_time = millis();
+  while (millis() - last_byte_time < timeout_ms) {
+    if (millis() > safety) {
+      ESP_LOGW(TAG, "flush_rx: safety timeout");
+      break;
     }
-    delay(1);
+    while (available()) {
+      read();  // lire et jeter l'octet (comme le legacy)
+      last_byte_time = millis();
+    }
+    yield();  // laisser le scheduler respirer (comme le legacy)
   }
   rx_buffer_len_ = 0;
 }
