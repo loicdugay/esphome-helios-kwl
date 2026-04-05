@@ -882,7 +882,6 @@ lvgl:
                             char buf[4];
                             sprintf(buf, "%d", (int)x);
                             return std::string(buf);
-                      - delay: 500ms
                       - lambda: id(arc_updating) = false;
 
         - label:
@@ -1167,7 +1166,7 @@ lvgl:
         then:
           - lvgl.label.update:
               id: label_summer_state
-              text: !lambda "return id(sw_summer).state ? \"Fraicheur\" : \"Hiver\";"
+              text: !lambda "return id(sw_summer).state ? std::string(\"Fraicheur\") : std::string(\"Hiver\");"
           - lvgl.label.update:
               id: label_service_months
               text: !lambda |-
@@ -1250,15 +1249,7 @@ lvgl:
                   id: sw_lvgl_summer
                   x: 0
                   y: 28
-                  on_value:
-                    then:
-                      - if:
-                          condition:
-                            lambda: "return id(sw_lvgl_summer)->get_value();"
-                          then:
-                            - switch.turn_on: sw_summer
-                          else:
-                            - switch.turn_off: sw_summer
+
               - label:
                   id: label_summer_state
                   x: 0
