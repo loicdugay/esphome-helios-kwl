@@ -799,44 +799,36 @@ void HeliosKwlComponent::update_health_indicator() {
 bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   ESP_LOGD(TAG, "Écriture reg=0x%02X val=0x%02X", reg, value);
 
-  // 1. Silence bus pendant 10ms
-  flush_rx(10);
+  // 1. Silence bus pendant 5ms (non-bloquant sur 9600 baud)
+  flush_rx(5);
 
   // 2. Message 1 : Broadcast télécommandes (0x20)
   uint8_t msg1[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_RC, reg, value, 0};
   msg1[5] = checksum(msg1, 5);
   write_array(msg1, HELIOS_PACKET_LEN);
   flush();
-  delay(5);
+  delay(2);  // 6 octets @ 9600 baud ≈ 6ms → 2ms inter-message suffit
 
   // 3. Message 2 : Broadcast cartes mères (0x10)
   uint8_t msg2[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_ALL, reg, value, 0};
   msg2[5] = checksum(msg2, 5);
   write_array(msg2, HELIOS_PACKET_LEN);
   flush();
-  delay(5);
+  delay(2);
 
-  // 4. Message 3 : Direct carte mère 1 (0x11) + CRC envoyé deux fois
+  // 4. Message 3 : Direct carte mère 1 (0x11) + CRC doublé (requis protocole Helios)
   uint8_t msg3[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, reg, value, 0};
   msg3[5] = checksum(msg3, 5);
   write_array(msg3, HELIOS_PACKET_LEN);
-  write_byte(msg3[5]);  // CRC doublé — requis par le protocole Helios
+  write_byte(msg3[5]);
   flush();
 
-  // 5. Attendre 50ms que la VMC traite la commande
-  delay(50);
-
-  // 6. Relire pour vérifier la prise en compte
-  auto result = poll_register(reg, 2);
-  if (result.has_value() && *result == value) {
-    register_cache_[reg] = {value, millis(), true};
-    ESP_LOGD(TAG, "Écriture confirmée reg=0x%02X", reg);
-    return true;
-  }
-
-  ESP_LOGW(TAG, "Vérification écriture échouée reg=0x%02X : écrit=0x%02X lu=0x%02X",
-           reg, value, result.value_or(0xFF));
-  return false;
+  // 5. Mise à jour optimiste du cache — la VMC broadcastera la confirmation dans ~12s
+  //    Pas de vérification bloquante : delay(50)+poll_register() bloque le scheduler
+  //    et empêche LVGL de rendre, causant des ralentissements à l'écran tactile
+  register_cache_[reg] = {value, millis(), true};
+  ESP_LOGD(TAG, "Écriture envoyée reg=0x%02X (cache optimiste)", reg);
+  return true;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -845,19 +837,14 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 bool HeliosKwlComponent::set_register_bit(uint8_t reg, uint8_t bit, bool state) {
-  // Lire la valeur actuelle (cache ou poll)
-  uint8_t current = 0;
+  // Utiliser UNIQUEMENT le cache — poll_register() est bloquant (200ms)
+  // et casse LVGL + le scheduler ESPHome quand déclenché depuis un callback tactile
   auto cached = get_cached_value(reg);
-  if (cached.has_value()) {
-    current = *cached;
-  } else {
-    auto polled = poll_register(reg, 3);
-    if (!polled.has_value()) {
-      ESP_LOGW(TAG, "set_register_bit : impossible de lire reg=0x%02X", reg);
-      return false;
-    }
-    current = *polled;
+  if (!cached.has_value()) {
+    ESP_LOGW(TAG, "set_register_bit : cache vide reg=0x%02X, skip (sera retransmis)", reg);
+    return false;
   }
+  uint8_t current = *cached;
 
   uint8_t new_val = state ? (current | (1u << bit)) : (current & ~(1u << bit));
 
@@ -897,8 +884,8 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries
     write_array(req, HELIOS_PACKET_LEN);
     flush();
 
-    // Attendre la réponse (max 200ms)
-    uint32_t deadline = millis() + 200;
+    // Attendre la réponse (max 150ms, pas de delay() → scheduler non bloqué)
+    uint32_t deadline = millis() + 150;
     while (millis() < deadline) {
       accumulate_rx();
       if (rx_buffer_len_ >= HELIOS_PACKET_LEN) {
@@ -914,22 +901,20 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries
 
           // Accepter une réponse de la carte mère pour ce registre
           if (resp_src == HELIOS_MAINBOARD && resp_reg == reg) {
-            // Mettre à jour le cache
             register_cache_[reg] = {resp_val, millis(), true};
-            // Consommer le paquet
             size_t end = i + HELIOS_PACKET_LEN;
             std::copy(rx_buffer_.begin() + end,
                       rx_buffer_.begin() + rx_buffer_len_,
                       rx_buffer_.begin() + i);
             rx_buffer_len_ -= HELIOS_PACKET_LEN;
             ESP_LOGV(TAG, "Poll reg=0x%02X → 0x%02X (tentative %u)", reg, resp_val, attempt + 1);
-            // Supprimer warning "unused variable" en release
             (void) resp_dst;
             return resp_val;
           }
         }
       }
-      delay(2);
+      // Pas de delay() ici — accumulate_rx() est non-bloquant
+      // Le while() se termine naturellement à deadline
     }
 
     ESP_LOGV(TAG, "Poll reg=0x%02X timeout (tentative %u/%u)", reg, attempt + 1, retries);
