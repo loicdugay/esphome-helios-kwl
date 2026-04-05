@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 #include "esphome/components/select/select.h"
-#include "helios_kwl.h"
+#include "../helios_kwl.h"
 
 namespace esphome {
 namespace helios_kwl {
