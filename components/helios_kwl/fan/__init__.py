@@ -7,27 +7,23 @@ Remplace l'ancienne sous-plateforme output/
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import fan
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, CONF_NAME
 
 from .. import helios_kwl_ns, CONF_HELIOS_KWL_ID, HeliosKwlComponent
 
-# ── Classe C++ ────────────────────────────────────────────────────────────────
-# HeliosKwlFan est définie dans helios_kwl.h (inclus automatiquement
-# car dans le même dossier composant), pas besoin de add_global ici.
+# ── Classe C++ — définie dans helios_kwl.h (même namespace) ───────────────────
 HeliosKwlFan = helios_kwl_ns.class_("HeliosKwlFan", fan.Fan, cg.Component)
 
 # ── Clé de configuration ──────────────────────────────────────────────────────
 CONF_VENTILATION_FAN = "ventilation_fan"
 
-# ── Schéma de la sous-plateforme ──────────────────────────────────────────────
+# ── Schéma : fan.fan_schema() est la nouvelle API depuis ESPHome 2025.11 ──────
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_HELIOS_KWL_ID): cv.use_id(HeliosKwlComponent),
-        cv.Optional(CONF_VENTILATION_FAN): fan.FAN_SCHEMA.extend(
-            {
-                cv.GenerateID(): cv.declare_id(HeliosKwlFan),
-            }
-        ).extend(cv.COMPONENT_SCHEMA),
+        cv.Optional(CONF_VENTILATION_FAN): fan.fan_schema(HeliosKwlFan).extend(
+            cv.COMPONENT_SCHEMA
+        ),
     }
 )
 
