@@ -522,6 +522,19 @@ switch:
       name: ${name_hum_reg}
       id: sw_hum_reg
 
+  # ── Synchro bidirectionnelle widget LVGL ↔ switch ESPHome ─────────────
+  # Conforme doc : https://esphome.io/components/switch/lvgl/
+  - platform: lvgl
+    widget: sw_lvgl_summer
+    id: sw_lvgl_summer_entity
+    internal: true
+    on_turn_on:
+      then:
+        - switch.turn_on: sw_summer
+    on_turn_off:
+      then:
+        - switch.turn_off: sw_summer
+
 # ─── Numbers ───────────────────────────────────────────────────
 
 number:
@@ -1152,17 +1165,6 @@ lvgl:
       bg_color: 0x000000
       on_load:
         then:
-          - if:
-              condition:
-                lambda: "return id(sw_summer).state;"
-              then:
-                - lvgl.switch.update:
-                    id: sw_lvgl_summer
-                    state: true
-              else:
-                - lvgl.switch.update:
-                    id: sw_lvgl_summer
-                    state: false
           - lvgl.label.update:
               id: label_summer_state
               text: !lambda "return id(sw_summer).state ? \"Fraicheur\" : \"Hiver\";"
