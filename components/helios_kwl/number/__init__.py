@@ -93,7 +93,6 @@ _MAPPING = [
 
 
 async def to_code(config):
-    cg.add_global(cg.RawExpression('#include "helios_kwl_number.h"'))
     parent = await cg.get_variable(config[CONF_HELIOS_KWL_ID])
 
     for conf_key, setter in _MAPPING:

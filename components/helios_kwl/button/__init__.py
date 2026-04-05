@@ -50,7 +50,6 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
-    cg.add_global(cg.RawExpression('#include "helios_kwl_button.h"'))
     parent = await cg.get_variable(config[CONF_HELIOS_KWL_ID])
 
     if CONF_BOOST_AIRFLOW in config:

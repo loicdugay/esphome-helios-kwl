@@ -475,3 +475,11 @@ class HeliosKwlFan : public fan::Fan, public Component {
 
 }  // namespace helios_kwl
 }  // namespace esphome
+
+// ── Includes des sous-plateformes C++ ────────────────────────────────────────
+// Inclus ici pour que le compilateur les trouve via helios_kwl.h
+// qui est lui-même référencé correctement dans le build ESPHome
+#include "switch/helios_kwl_switch.h"
+#include "number/helios_kwl_number.h"
+#include "select/helios_kwl_select.h"
+#include "button/helios_kwl_button.h"
