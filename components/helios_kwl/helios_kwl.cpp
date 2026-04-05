@@ -940,9 +940,11 @@ void HeliosKwlComponent::flush_rx(uint32_t timeout_ms) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 uint8_t HeliosKwlComponent::checksum(const uint8_t *data, size_t len) {
+  // Protocole Helios/Vallox : somme arithmétique (pas XOR)
+  // Identique au legacy : std::accumulate(begin, end, 0) tronqué à 8 bits
   uint8_t crc = 0;
   for (size_t i = 0; i < len; i++)
-    crc ^= data[i];
+    crc += data[i];
   return crc;
 }
 
