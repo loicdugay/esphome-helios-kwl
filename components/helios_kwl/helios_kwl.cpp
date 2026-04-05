@@ -136,23 +136,10 @@ void HeliosKwlComponent::setup() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::loop() {
-  accumulate_rx();
-
-  // Tenter de consommer autant de paquets valides que possible
-  // (plusieurs paquets peuvent être dans le buffer entre deux loop())
-  while (rx_buffer_len_ >= HELIOS_PACKET_LEN) {
-    if (!process_rx_buffer()) {
-      // Aucun paquet valide trouvé — décaler d'un octet et réessayer
-      // (gestion de la désynchronisation)
-      if (rx_buffer_len_ > 0) {
-        std::copy(rx_buffer_.begin() + 1,
-                  rx_buffer_.begin() + rx_buffer_len_,
-                  rx_buffer_.begin());
-        rx_buffer_len_--;
-      }
-      break;
-    }
-  }
+  // NE PAS lire l'UART ici — cela consommerait les octets de réponse
+  // AVANT que poll_register() / read_array<6>() puisse les lire.
+  // Architecture comme le legacy : tout se passe dans update() → poll_register().
+  // Les broadcasts passifs sont captés dans poll_register() (wrong response ignoré).
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -883,14 +870,10 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries
     uint8_t req[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
     req[5] = checksum(req, 5);
     write_array(req, HELIOS_PACKET_LEN);
-    flush();  // attend fin TX
+    flush();
 
-    // Purger les échos TX (RS485 half-duplex : on lit ce qu'on écrit)
-    // Le legacy fait ceci implicitement car flush_read_buffer attend le silence
-    flush_rx(10);  // silence 10ms = échos purgés (6 octets @ 9600 = 6.25ms)
-
-    // Lire la réponse avec read_array — même méthode que le code legacy
-    // read_array attend les N octets avec le timeout UART natif (RX_TIMEOUT dans vmc.yaml)
+    // Lire la réponse — exactement comme le legacy : TX puis read_array<6>() direct
+    // Pas de flush après TX : la réponse VMC arrive rapidement et ne doit pas être jetée
     auto response = read_array<HELIOS_PACKET_LEN>();
     if (response.has_value()) {
       const auto& arr = *response;
