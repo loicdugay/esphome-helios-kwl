@@ -1209,12 +1209,9 @@ void HeliosKwlComponent::acknowledge_maintenance() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 fan::FanTraits HeliosKwlFan::get_traits() {
-  auto traits = fan::FanTraits();
-  traits.set_supports_speed(true);
-  traits.set_speed_count(8);      // 8 vitesses
-  traits.set_supports_oscillation(false);
-  traits.set_supports_direction(false);
-  return traits;
+  // Constructeur FanTraits(oscillation, speed, direction, speed_count)
+  // API ESPHome 2025+ : plus de setters individuels
+  return fan::FanTraits(false, true, false, 8);
 }
 
 void HeliosKwlFan::control(const fan::FanCall &call) {
