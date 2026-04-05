@@ -875,51 +875,38 @@ bool HeliosKwlComponent::read_register_bit(uint8_t reg, uint8_t bit) {
 
 optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries) {
   for (uint8_t attempt = 0; attempt < retries; attempt++) {
-    // Vider le buffer entrant avant d'envoyer
+    // Vider le buffer (même stratégie que le code legacy)
     flush_rx(5);
 
-    // Envoyer la requête selon protocole Vallox Annexe B :
-    // "VARIABLE = 00H, DATA = <register code>"
-    // → byte[3]=0x00 (VARIABLE=READ), byte[4]=reg (DATA=registre à lire)
+    // Format confirmé par le code legacy ET la doc Vallox Annexe B :
+    // VARIABLE=0x00 (demande de lecture), DATA=registre demandé
     uint8_t req[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
     req[5] = checksum(req, 5);
     write_array(req, HELIOS_PACKET_LEN);
     flush();
 
-    // Attendre la réponse (max 150ms, pas de delay() → scheduler non bloqué)
-    uint32_t deadline = millis() + 150;
-    while (millis() < deadline) {
-      accumulate_rx();
-      if (rx_buffer_len_ >= HELIOS_PACKET_LEN) {
-        // Chercher une réponse valide pour ce registre
-        for (size_t i = 0; i + HELIOS_PACKET_LEN <= rx_buffer_len_; i++) {
-          if (rx_buffer_[i] != HELIOS_START_BYTE) continue;
-          if (!verify_checksum(rx_buffer_.data() + i, HELIOS_PACKET_LEN)) continue;
-
-          uint8_t resp_src = rx_buffer_[i + 1];
-          uint8_t resp_dst = rx_buffer_[i + 2];
-          uint8_t resp_reg = rx_buffer_[i + 3];
-          uint8_t resp_val = rx_buffer_[i + 4];
-
-          // Accepter une réponse de la carte mère pour ce registre
-          if (resp_src == HELIOS_MAINBOARD && resp_reg == reg) {
-            register_cache_[reg] = {resp_val, millis(), true};
-            size_t end = i + HELIOS_PACKET_LEN;
-            std::copy(rx_buffer_.begin() + end,
-                      rx_buffer_.begin() + rx_buffer_len_,
-                      rx_buffer_.begin() + i);
-            rx_buffer_len_ -= HELIOS_PACKET_LEN;
-            ESP_LOGV(TAG, "Poll reg=0x%02X → 0x%02X (tentative %u)", reg, resp_val, attempt + 1);
-            (void) resp_dst;
-            return resp_val;
-          }
+    // Lire la réponse avec read_array — même méthode que le code legacy
+    // read_array attend les N octets avec le timeout UART natif (RX_TIMEOUT dans vmc.yaml)
+    auto response = read_array<HELIOS_PACKET_LEN>();
+    if (response.has_value()) {
+      const auto& arr = *response;
+      if (verify_checksum(arr.data(), HELIOS_PACKET_LEN)) {
+        // Vérifier : src=MAINBOARD, dst=nous, registre=celui demandé
+        if (arr[1] == HELIOS_MAINBOARD && arr[2] == address_ && arr[3] == reg) {
+          uint8_t val = arr[4];
+          register_cache_[reg] = {val, millis(), true};
+          ESP_LOGV(TAG, "Poll reg=0x%02X → 0x%02X (tentative %u)", reg, val, attempt + 1);
+          return val;
+        } else {
+          ESP_LOGW(TAG, "Poll réponse inattendue : src=0x%02X dst=0x%02X reg=0x%02X (attendu reg=0x%02X)",
+                   arr[1], arr[2], arr[3], reg);
         }
+      } else {
+        ESP_LOGW(TAG, "Poll CRC invalide reg=0x%02X", reg);
       }
-      // Pas de delay() ici — accumulate_rx() est non-bloquant
-      // Le while() se termine naturellement à deadline
     }
 
-    ESP_LOGV(TAG, "Poll reg=0x%02X timeout (tentative %u/%u)", reg, attempt + 1, retries);
+    ESP_LOGW(TAG, "Poll timeout reg=0x%02X (tentative %u/%u)", reg, attempt + 1, retries);
   }
 
   return {};  // Toutes les tentatives épuisées
