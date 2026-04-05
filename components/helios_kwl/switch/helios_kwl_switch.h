@@ -1,24 +1,59 @@
 #pragma once
 
-#include "../helios_kwl.h"
+// ──────────────────────────────────────────────────────────────────────────────
+// helios_kwl_switch.h — Classes switch pour Helios KWL EC 300 Pro
+// Chaque classe hérite de switch_::Switch et délègue l'écriture au composant
+// principal via le pointeur parent_.
+// ──────────────────────────────────────────────────────────────────────────────
+
 #include "esphome/components/switch/switch.h"
-#include "esphome/core/component.h"
+#include "helios_kwl.h"
 
 namespace esphome {
-namespace helios_kwl_component {
+namespace helios_kwl {
 
-class HeliosKwlWinterMode : public Component, public switch_::Switch {
+// ── Classe de base commune ────────────────────────────────────────────────────
+
+class HeliosKwlSwitchBase : public switch_::Switch {
  public:
-  void set_parent(HeliosKwlComponent* parent) { m_parent = parent; };
+  void set_parent(HeliosKwlComponent *parent) { parent_ = parent; }
 
-  void write_state(bool state) override {
-    m_parent->set_state_flag(3, state);
-    publish_state(state);
-  }
-
- private:
-  HeliosKwlComponent* m_parent;
+ protected:
+  HeliosKwlComponent *parent_{nullptr};
 };
 
-}  // namespace helios_kwl_component
+// ── Régulation CO₂ (0xA3 bit 1) ─────────────────────────────────────────────
+
+class HeliosKwlCo2RegSwitch : public HeliosKwlSwitchBase {
+ protected:
+  void write_state(bool state) override {
+    if (parent_ != nullptr)
+      parent_->control_co2_regulation(state);
+    publish_state(state);
+  }
+};
+
+// ── Régulation humidité (0xA3 bit 2) ─────────────────────────────────────────
+
+class HeliosKwlHumidityRegSwitch : public HeliosKwlSwitchBase {
+ protected:
+  void write_state(bool state) override {
+    if (parent_ != nullptr)
+      parent_->control_humidity_regulation(state);
+    publish_state(state);
+  }
+};
+
+// ── Mode fraîcheur / été (0xA3 bit 3) ────────────────────────────────────────
+
+class HeliosKwlSummerModeSwitch : public HeliosKwlSwitchBase {
+ protected:
+  void write_state(bool state) override {
+    if (parent_ != nullptr)
+      parent_->control_summer_mode(state);
+    publish_state(state);
+  }
+};
+
+}  // namespace helios_kwl
 }  // namespace esphome
