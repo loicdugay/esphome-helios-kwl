@@ -12,6 +12,8 @@ from esphome.const import CONF_ID
 from .. import helios_kwl_ns, CONF_HELIOS_KWL_ID, HeliosKwlComponent
 
 # ── Classe C++ ────────────────────────────────────────────────────────────────
+# HeliosKwlFan est définie dans helios_kwl.h (inclus automatiquement
+# car dans le même dossier composant), pas besoin de add_global ici.
 HeliosKwlFan = helios_kwl_ns.class_("HeliosKwlFan", fan.Fan, cg.Component)
 
 # ── Clé de configuration ──────────────────────────────────────────────────────
@@ -21,11 +23,11 @@ CONF_VENTILATION_FAN = "ventilation_fan"
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_HELIOS_KWL_ID): cv.use_id(HeliosKwlComponent),
-
-        # ── Entité fan unique : ON/OFF + vitesse 1-8 ──
-        cv.Optional(CONF_VENTILATION_FAN): fan.fan_schema(HeliosKwlFan).extend(
-            cv.COMPONENT_SCHEMA
-        ),
+        cv.Optional(CONF_VENTILATION_FAN): fan.FAN_SCHEMA.extend(
+            {
+                cv.GenerateID(): cv.declare_id(HeliosKwlFan),
+            }
+        ).extend(cv.COMPONENT_SCHEMA),
     }
 )
 

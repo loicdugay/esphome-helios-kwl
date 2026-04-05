@@ -6,7 +6,7 @@ Sous-plateforme button — Helios KWL EC 300 Pro
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import button
-from esphome.const import CONF_ID, ENTITY_CATEGORY_CONFIG
+from esphome.const import ENTITY_CATEGORY_CONFIG
 
 from .. import helios_kwl_ns, CONF_HELIOS_KWL_ID, HeliosKwlComponent
 
@@ -50,6 +50,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
+    cg.add_global(cg.RawExpression('#include "helios_kwl_button.h"'))
     parent = await cg.get_variable(config[CONF_HELIOS_KWL_ID])
 
     if CONF_BOOST_AIRFLOW in config:
