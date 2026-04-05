@@ -1152,9 +1152,17 @@ lvgl:
       bg_color: 0x000000
       on_load:
         then:
-          - lvgl.switch.update:
-              id: sw_lvgl_summer
-              state: !lambda "return id(sw_summer).state;"
+          - if:
+              condition:
+                lambda: "return id(sw_summer).state;"
+              then:
+                - lvgl.switch.update:
+                    id: sw_lvgl_summer
+                    state: true
+              else:
+                - lvgl.switch.update:
+                    id: sw_lvgl_summer
+                    state: false
           - lvgl.label.update:
               id: label_summer_state
               text: !lambda "return id(sw_summer).state ? \"Fraicheur\" : \"Hiver\";"
@@ -1244,7 +1252,7 @@ lvgl:
                     then:
                       - if:
                           condition:
-                            lvgl.switch.is_on: sw_lvgl_summer
+                            lambda: "return id(sw_lvgl_summer)->get_value();"
                           then:
                             - switch.turn_on: sw_summer
                           else:
