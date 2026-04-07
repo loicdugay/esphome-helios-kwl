@@ -221,29 +221,30 @@ fan:
       restore_mode: RESTORE_DEFAULT_ON
       on_speed_set:
         then:
-          - if:
-              condition:
-                lambda: return !id(arc_updating);
-              then:
-                - lvgl.arc.update:
-                    id: fan_speed_arc
-                    value: !lambda "return x;"
-                - lvgl.label.update:
-                    id: label_fan_speed
-                    text: !lambda |-
-                      char buf[4];
-                      sprintf(buf, "%d", (int)x);
-                      return std::string(buf);
+          - lambda: id(arc_updating) = true;
+          - lvgl.arc.update:
+              id: fan_speed_arc
+              value: !lambda "return x;"
+          - lvgl.label.update:
+              id: label_fan_speed
+              text: !lambda |-
+                char buf[4];
+                sprintf(buf, "%d", (int)x);
+                return std::string(buf);
+          - lambda: id(arc_updating) = false;
       on_turn_off:
         then:
+          - lambda: id(arc_updating) = true;
           - lvgl.arc.update:
               id: fan_speed_arc
               value: 0
           - lvgl.label.update:
               id: label_fan_speed
               text: "0"
+          - lambda: id(arc_updating) = false;
       on_turn_on:
         then:
+          - lambda: id(arc_updating) = true;
           - lvgl.arc.update:
               id: fan_speed_arc
               value: !lambda "return (int)id(helios_kwl_fan).speed;"
@@ -253,6 +254,7 @@ fan:
                 char buf[4];
                 sprintf(buf, "%d", (int)id(helios_kwl_fan).speed);
                 return std::string(buf);
+          - lambda: id(arc_updating) = false;
 
 # ─── Sensors ───────────────────────────────────────────────────
 
@@ -267,25 +269,8 @@ sensor:
     fan_speed:
       name: ${name_fan_speed}
       id: sensor_fan_speed
-      on_value:
-        then:
-          # Ne PAS appeler fan.turn_on ici — cela crée une boucle :
-          # VMC broadcast vitesse → sensor.on_value → fan.turn_on → write_register
-          # → VMC rebroadcast → infini.
-          # L'arc LVGL est mis à jour ici uniquement pour refléter la vitesse réelle VMC.
-          - if:
-              condition:
-                lambda: return !id(arc_updating);
-              then:
-                - lvgl.arc.update:
-                    id: fan_speed_arc
-                    value: !lambda "return (int)x;"
-                - lvgl.label.update:
-                    id: label_fan_speed
-                    text: !lambda |-
-                      char buf[4];
-                      sprintf(buf, "%d", (int)x);
-                      return std::string(buf);
+      # Pas de on_value : le sensor publie vers HA automatiquement.
+      # L'arc LVGL est géré par fan.on_speed_set/on_turn_on/off.
 
     temperature_outside:
       name: ${name_temp_outside}
@@ -728,6 +713,7 @@ lvgl:
       bg_color: 0x000000
       on_load:
         then:
+          - lambda: id(arc_updating) = true;
           - lvgl.arc.update:
               id: fan_speed_arc
               value: !lambda "return (int)id(helios_kwl_fan).speed;"
@@ -737,6 +723,7 @@ lvgl:
                 char buf[4];
                 sprintf(buf, "%d", (int)id(helios_kwl_fan).speed);
                 return std::string(buf);
+          - lambda: id(arc_updating) = false;
           - if:
               condition:
                 lambda: return id(sw_summer).state;
@@ -882,6 +869,7 @@ lvgl:
             text_color: 0xFFFFFF
             on_click:
               then:
+                - lambda: id(arc_updating) = true;
                 - if:
                     condition:
                       lambda: return id(helios_kwl_fan).state;
@@ -904,6 +892,7 @@ lvgl:
                             char buf[4];
                             sprintf(buf, "%d", (int)id(helios_kwl_fan).speed);
                             return std::string(buf);
+                - lambda: id(arc_updating) = false;
 
         - label:
             text: "\U000F0210"
