@@ -1,7 +1,7 @@
 """
 Sous-plateforme number — Helios KWL EC 300 Pro
 12 réglages numériques : vitesses, températures, seuils, entretien, puissance
-CORRIGÉ : câblage parent + callbacks setters manquants
+CORRIGÉ : syntaxe pointeur de méthode C++ via RawExpression
 """
 
 import esphome.codegen as cg
@@ -76,8 +76,7 @@ CONFIG_SCHEMA = cv.Schema(
     }
 )
 
-# ── Table : clé config → (setter parent, type setter, méthode HeliosKwlNumber) ──
-# type : "uint8", "uint16", "float"
+# ── Table : clé config → (setter parent, setter number, nom méthode C++) ──
 _MAPPING = [
     (CONF_BASIC_FAN_SPEED,     "set_basic_fan_speed_number",     "set_uint8_setter",  "control_basic_fan_speed"),
     (CONF_MAX_FAN_SPEED,       "set_max_fan_speed_number",       "set_uint8_setter",  "control_max_fan_speed"),
@@ -106,13 +105,15 @@ async def to_code(config):
             max_value=config[conf_key][CONF_MAX_VALUE],
             step=config[conf_key][CONF_STEP],
         )
-        # Enregistrer le number dans le parent (pour publish_state depuis le composant)
+        # Enregistrer le number dans le parent (pour publish_state)
         cg.add(getattr(parent, parent_setter)(num))
 
-        # CORRIGÉ : câbler le parent et le setter sur le HeliosKwlNumber
-        # pour que control() puisse appeler la bonne méthode sur le composant principal
+        # Câbler le parent sur le HeliosKwlNumber
         cg.add(num.set_parent(parent))
 
-        # Résoudre le pointeur de méthode C++ pour le callback
-        setter_ptr = getattr(HeliosKwlComponent, control_method)
-        cg.add(getattr(num, number_setter_method)(setter_ptr))
+        # Câbler le pointeur de méthode C++ : &HeliosKwlComponent::control_xxx
+        # cg.RawExpression génère le code C++ brut avec la syntaxe correcte
+        method_ptr = cg.RawExpression(
+            f"&helios_kwl::HeliosKwlComponent::{control_method}"
+        )
+        cg.add(getattr(num, number_setter_method)(method_ptr))
