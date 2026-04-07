@@ -1,6 +1,7 @@
 """
 Sous-plateforme number — Helios KWL EC 300 Pro
 12 réglages numériques : vitesses, températures, seuils, entretien, puissance
+CORRIGÉ : câblage parent + callbacks setters manquants
 """
 
 import esphome.codegen as cg
@@ -75,27 +76,28 @@ CONFIG_SCHEMA = cv.Schema(
     }
 )
 
-# ── Table : clé config → setter sur le parent ─────────────────────────────────
+# ── Table : clé config → (setter parent, type setter, méthode HeliosKwlNumber) ──
+# type : "uint8", "uint16", "float"
 _MAPPING = [
-    (CONF_BASIC_FAN_SPEED,     "set_basic_fan_speed_number"),
-    (CONF_MAX_FAN_SPEED,       "set_max_fan_speed_number"),
-    (CONF_BYPASS_TEMP,         "set_bypass_temp_number"),
-    (CONF_PREHEATING_TEMP,     "set_preheating_temp_number"),
-    (CONF_FROST_ALARM_TEMP,    "set_frost_alarm_temp_number"),
-    (CONF_FROST_HYSTERESIS,    "set_frost_hysteresis_number"),
-    (CONF_CO2_SETPOINT,        "set_co2_setpoint_number"),
-    (CONF_HUMIDITY_SETPOINT,   "set_humidity_setpoint_number"),
-    (CONF_REGULATION_INTERVAL, "set_regulation_interval_number"),
-    (CONF_SUPPLY_FAN_PERCENT,  "set_supply_fan_percent_number"),
-    (CONF_EXHAUST_FAN_PERCENT, "set_exhaust_fan_percent_number"),
-    (CONF_SERVICE_INTERVAL,    "set_service_interval_number"),
+    (CONF_BASIC_FAN_SPEED,     "set_basic_fan_speed_number",     "set_uint8_setter",  "control_basic_fan_speed"),
+    (CONF_MAX_FAN_SPEED,       "set_max_fan_speed_number",       "set_uint8_setter",  "control_max_fan_speed"),
+    (CONF_BYPASS_TEMP,         "set_bypass_temp_number",         "set_float_setter",  "control_bypass_temp"),
+    (CONF_PREHEATING_TEMP,     "set_preheating_temp_number",     "set_float_setter",  "control_preheating_temp"),
+    (CONF_FROST_ALARM_TEMP,    "set_frost_alarm_temp_number",    "set_float_setter",  "control_frost_alarm_temp"),
+    (CONF_FROST_HYSTERESIS,    "set_frost_hysteresis_number",    "set_float_setter",  "control_frost_hysteresis"),
+    (CONF_CO2_SETPOINT,        "set_co2_setpoint_number",        "set_uint16_setter", "control_co2_setpoint"),
+    (CONF_HUMIDITY_SETPOINT,   "set_humidity_setpoint_number",   "set_uint8_setter",  "control_humidity_setpoint"),
+    (CONF_REGULATION_INTERVAL, "set_regulation_interval_number", "set_uint8_setter",  "control_regulation_interval"),
+    (CONF_SUPPLY_FAN_PERCENT,  "set_supply_fan_percent_number",  "set_uint8_setter",  "control_supply_fan_percent"),
+    (CONF_EXHAUST_FAN_PERCENT, "set_exhaust_fan_percent_number", "set_uint8_setter",  "control_exhaust_fan_percent"),
+    (CONF_SERVICE_INTERVAL,    "set_service_interval_number",    "set_uint8_setter",  "control_service_interval"),
 ]
 
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_HELIOS_KWL_ID])
 
-    for conf_key, setter in _MAPPING:
+    for conf_key, parent_setter, number_setter_method, control_method in _MAPPING:
         if conf_key not in config:
             continue
         num = await number.new_number(
@@ -104,4 +106,13 @@ async def to_code(config):
             max_value=config[conf_key][CONF_MAX_VALUE],
             step=config[conf_key][CONF_STEP],
         )
-        cg.add(getattr(parent, setter)(num))
+        # Enregistrer le number dans le parent (pour publish_state depuis le composant)
+        cg.add(getattr(parent, parent_setter)(num))
+
+        # CORRIGÉ : câbler le parent et le setter sur le HeliosKwlNumber
+        # pour que control() puisse appeler la bonne méthode sur le composant principal
+        cg.add(num.set_parent(parent))
+
+        # Résoudre le pointeur de méthode C++ pour le callback
+        setter_ptr = getattr(HeliosKwlComponent, control_method)
+        cg.add(getattr(num, number_setter_method)(setter_ptr))

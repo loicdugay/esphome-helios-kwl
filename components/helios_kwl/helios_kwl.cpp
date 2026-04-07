@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // helios_kwl.cpp — Composant ESPHome pour VMC Helios KWL EC 300 Pro
-// Protocole RS485 Vallox/Helios — Refonte complète phase 1
+// Protocole RS485 Vallox/Helios — Refonte complète phase 1 — Corrigé
 // ──────────────────────────────────────────────────────────────────────────────
 
 #include "helios_kwl.h"
@@ -14,7 +14,6 @@ static const char *const TAG = "helios_kwl";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Table NTC → °C (256 entrées, source : Vallox Digit bus protocol Annex A)
-// Index = valeur brute du registre, valeur = température en °C
 // ──────────────────────────────────────────────────────────────────────────────
 
 static const int8_t NTC_TABLE[256] = {
@@ -85,37 +84,44 @@ void HeliosKwlComponent::setup() {
 
   // ── Construction de la table de polling rotatif ──
   // Règle NASA n°3 : taille statique, allouée ici une seule fois.
-  // Ordre : les registres les plus critiques (fréquence haute) en premier.
+  // Températures, CO₂ et humidité max (0x2A) sont broadcastés → pas de poll.
+  // Humidité sondes 1 et 2 (0x2F, 0x30) ne sont PAS broadcastés → poll nécessaire.
   poll_task_count_ = 0;
 
 #define ADD_POLL(reg, interval) \
   poll_tasks_[poll_task_count_++] = PollTask{(reg), (interval), 0}
 
+  // Registres critiques — intervalle court
   ADD_POLL(REG_STATES,           2000);   // 0xA3 — power, régulations, mode, filtre
   ADD_POLL(REG_FAN_SPEED,        2000);   // 0x29 — vitesse actuelle
   ADD_POLL(REG_IO_PORT,          3000);   // 0x08 — bypass, préchauffe, ventilateurs
-  // Températures et CO₂ reçus passivement via loop() (broadcasts VMC toutes les ~12s)
   ADD_POLL(REG_BOOST_STATE,      3000);   // 0x71 — boost/cheminée actif
-  ADD_POLL(REG_BOOST_REMAINING,  3000);   // 0x79 — timer boost restant
+  ADD_POLL(REG_BOOST_REMAINING,  5000);   // 0x79 — timer boost (pollé seulement si actif)
+
+  // Registres moyennement critiques
   ADD_POLL(REG_ALARMS,           5000);   // 0x6D — alarmes CO₂ + gel
-  ADD_POLL(REG_HUMIDITY1,        5000);   // 0x2F — sonde humidité 1
-  ADD_POLL(REG_HUMIDITY2,        5000);   // 0x30 — sonde humidité 2
+  ADD_POLL(REG_HUMIDITY1,       10000);   // 0x2F — sonde humidité 1 (non broadcasté)
+  ADD_POLL(REG_HUMIDITY2,       10000);   // 0x30 — sonde humidité 2 (non broadcasté)
   ADD_POLL(REG_FAULT_CODE,      10000);   // 0x36 — code erreur
-  ADD_POLL(REG_PROGRAM_VARS,    30000);   // 0xAA — variables programme (intervalle, modes)
-  ADD_POLL(REG_BASIC_SPEED,     30000);   // 0xA9 — vitesse de base
-  ADD_POLL(REG_MAX_SPEED,       30000);   // 0xA5 — vitesse maximale
-  ADD_POLL(REG_BYPASS_TEMP,     30000);   // 0xAF — seuil température bypass
-  ADD_POLL(REG_DEFROST_TEMP,    30000);   // 0xA7 — seuil dégivrage
-  ADD_POLL(REG_FROST_ALARM_TEMP,30000);   // 0xA8 — seuil alerte givre
+
+  // Paramètres de configuration — intervalle long (changent rarement)
+  ADD_POLL(REG_PROGRAM_VARS,    60000);   // 0xAA — variables programme
+  ADD_POLL(REG_BASIC_SPEED,     60000);   // 0xA9 — vitesse de base
+  ADD_POLL(REG_MAX_SPEED,       60000);   // 0xA5 — vitesse maximale
+  ADD_POLL(REG_BYPASS_TEMP,     60000);   // 0xAF — seuil température bypass
+  ADD_POLL(REG_DEFROST_TEMP,    60000);   // 0xA7 — seuil dégivrage
+  ADD_POLL(REG_FROST_ALARM_TEMP,60000);   // 0xA8 — seuil alerte givre
   ADD_POLL(REG_SERVICE_MONTHS,  60000);   // 0xAB — mois restants maintenance
-  ADD_POLL(REG_FROST_HYSTERESIS,60000);   // 0xB2 — hystérésis antigel
-  ADD_POLL(REG_SUPPLY_FAN_PCT,  60000);   // 0xB0 — % puissance soufflage
-  ADD_POLL(REG_EXHAUST_FAN_PCT, 60000);   // 0xB1 — % puissance extraction
-  ADD_POLL(REG_CO2_SETPOINT_H,  60000);   // 0xB3 — seuil CO₂ high byte
-  ADD_POLL(REG_CO2_SETPOINT_L,  60000);   // 0xB4 — seuil CO₂ low byte
-  ADD_POLL(REG_HUMIDITY_SET,    60000);   // 0xAE — seuil humidité
+
+  // Paramètres avancés — intervalle très long
+  ADD_POLL(REG_FROST_HYSTERESIS,120000);  // 0xB2 — hystérésis antigel
+  ADD_POLL(REG_SUPPLY_FAN_PCT, 120000);   // 0xB0 — % puissance soufflage
+  ADD_POLL(REG_EXHAUST_FAN_PCT,120000);   // 0xB1 — % puissance extraction
+  ADD_POLL(REG_CO2_SETPOINT_H, 120000);   // 0xB3 — seuil CO₂ high byte
+  ADD_POLL(REG_CO2_SETPOINT_L, 120000);   // 0xB4 — seuil CO₂ low byte
+  ADD_POLL(REG_HUMIDITY_SET,   120000);   // 0xAE — seuil humidité
   ADD_POLL(REG_SERVICE_INTERVAL,120000);  // 0xA6 — intervalle entretien
-  ADD_POLL(REG_PROGRAM2,        120000);  // 0xB5 — variables programme 2
+  ADD_POLL(REG_PROGRAM2,       120000);   // 0xB5 — variables programme 2
 
 #undef ADD_POLL
 
@@ -133,21 +139,15 @@ void HeliosKwlComponent::setup() {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // loop() — écoute passive continue du bus RS485
-// Appelé aussi souvent que possible par le scheduler ESPHome
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::loop() {
-  // Écoute passive des broadcasts RS485 (températures, CO₂...)
-  // La VMC broadcast ces registres toutes les ~12s sans qu'on les demande.
-  // poll_register() appelle flush_rx() avant chaque TX, ce qui vide ce buffer
-  // sans conflit — ESPHome est mono-thread, loop() et update() ne s'entrecroisent pas.
   accumulate_rx();
 
   // Règle NASA n°2 : max RX_BUFFER_SIZE/HELIOS_PACKET_LEN paquets par appel
   const size_t max_packets = RX_BUFFER_SIZE / HELIOS_PACKET_LEN;
   for (size_t i = 0; i < max_packets && rx_buffer_len_ >= HELIOS_PACKET_LEN; i++) {
     if (!process_rx_buffer()) {
-      // Pas de paquet valide — décaler d'un octet et sortir
       if (rx_buffer_len_ > 0) {
         std::copy(rx_buffer_.begin() + 1,
                   rx_buffer_.begin() + rx_buffer_len_,
@@ -164,7 +164,6 @@ void HeliosKwlComponent::loop() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::accumulate_rx() {
-  // Règle NASA n°2 : borne supérieure explicite = RX_BUFFER_SIZE octets max par appel
   for (size_t i = 0; i < RX_BUFFER_SIZE && available(); i++) {
     if (rx_buffer_len_ >= RX_BUFFER_SIZE) {
       ESP_LOGW(TAG, "RX buffer plein — reset");
@@ -180,7 +179,6 @@ void HeliosKwlComponent::accumulate_rx() {
 // ──────────────────────────────────────────────────────────────────────────────
 // process_rx_buffer() — tente de parser un paquet depuis rx_buffer_
 // Format Helios : [0x01][src][dst][reg][val][crc] = 6 octets
-// Retourne vrai si un paquet a été consommé (qu'il soit valide ou non)
 // ──────────────────────────────────────────────────────────────────────────────
 
 bool HeliosKwlComponent::process_rx_buffer() {
@@ -188,7 +186,7 @@ bool HeliosKwlComponent::process_rx_buffer() {
     return false;
 
   // Cherche l'octet de début 0x01
-  size_t start = rx_buffer_len_;  // position du 0x01
+  size_t start = rx_buffer_len_;
   for (size_t i = 0; i + HELIOS_PACKET_LEN <= rx_buffer_len_; i++) {
     if (rx_buffer_[i] == HELIOS_START_BYTE) {
       start = i;
@@ -197,8 +195,6 @@ bool HeliosKwlComponent::process_rx_buffer() {
   }
 
   if (start == rx_buffer_len_) {
-    // Pas de 0x01 trouvé — vider tout ce qui précède le dernier octet
-    // (il pourrait être le début d'un futur paquet)
     if (rx_buffer_len_ > 0) {
       rx_buffer_[0] = rx_buffer_[rx_buffer_len_ - 1];
       rx_buffer_len_ = 1;
@@ -217,17 +213,16 @@ bool HeliosKwlComponent::process_rx_buffer() {
   if (rx_buffer_len_ < HELIOS_PACKET_LEN)
     return false;
 
-  // Vérifier le checksum du paquet [0..4] → [5]
+  // Vérifier le checksum
   if (!verify_checksum(rx_buffer_.data(), HELIOS_PACKET_LEN)) {
     ESP_LOGV(TAG, "CRC invalide : %02X %02X %02X %02X %02X %02X",
              rx_buffer_[0], rx_buffer_[1], rx_buffer_[2],
              rx_buffer_[3], rx_buffer_[4], rx_buffer_[5]);
-    // Consommer cet octet de début invalide et continuer
     std::copy(rx_buffer_.begin() + 1,
               rx_buffer_.begin() + rx_buffer_len_,
               rx_buffer_.begin());
     rx_buffer_len_--;
-    return true;  // on a avancé d'un octet → continuer l'itération
+    return true;
   }
 
   // Paquet valide : extraire les champs
@@ -248,7 +243,6 @@ bool HeliosKwlComponent::process_rx_buffer() {
   } else if (dst == address_) {
     handle_command(src, dst, reg, val);
   }
-  // Ignorer les paquets adressés à d'autres appareils
 
   // Consommer le paquet du buffer
   std::copy(rx_buffer_.begin() + HELIOS_PACKET_LEN,
@@ -260,19 +254,13 @@ bool HeliosKwlComponent::process_rx_buffer() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// handle_broadcast() — paquets broadcast (carte mère → bus)
-// Ces registres arrivent passivement toutes les ~12s sans qu'on les demande
+// handle_broadcast() / handle_command()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::handle_broadcast(uint8_t sender, uint8_t reg, uint8_t value) {
   ESP_LOGD(TAG, "Broadcast src=0x%02X reg=0x%02X val=0x%02X", sender, reg, value);
   publish_register(reg, value);
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// handle_command() — paquets adressés directement à cet ESP
-// Réponse à nos propres polls
-// ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::handle_command(uint8_t sender, uint8_t recipient,
                                          uint8_t reg, uint8_t value) {
@@ -282,8 +270,6 @@ void HeliosKwlComponent::handle_command(uint8_t sender, uint8_t recipient,
 
 // ──────────────────────────────────────────────────────────────────────────────
 // update() — polling rotatif, appelé toutes les 1s par PollingComponent
-// Stratégie : avancer dans la table de polling, ne poller que si l'intervalle
-// cible est écoulé. Un seul poll par appel (pas de blocage du scheduler).
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::update() {
@@ -292,39 +278,36 @@ void HeliosKwlComponent::update() {
 
   uint32_t now = millis();
 
-  // Recherche de la prochaine tâche dont l'intervalle est écoulé
-  // On fait un tour complet maximum pour trouver un candidat
   for (size_t i = 0; i < poll_task_count_; i++) {
     size_t idx = (current_poll_index_ + i) % poll_task_count_;
     PollTask &task = poll_tasks_[idx];
 
     if ((now - task.last_polled) >= task.interval_ms) {
-      // Cette tâche est due — la poller
+      // Skip boost_remaining si aucun cycle actif (évite poll inutile)
+      if (task.reg == REG_BOOST_REMAINING && !boost_cycle_active_) {
+        task.last_polled = now;
+        continue;
+      }
+
       auto result = poll_register(task.reg, 2);
       if (result.has_value()) {
         task.last_polled = now;
-        // publish_register() déjà appelé via handle_command()
-        // Si la réponse est arrivée passivement, le cache est à jour
-        // On publie quand même depuis le cache pour garantir la fraîcheur
         publish_register(task.reg, *result);
       } else {
         ESP_LOGW(TAG, "Poll timeout reg=0x%02X", task.reg);
-        // Marquer quand même pour ne pas réessayer immédiatement
         task.last_polled = now;
       }
 
-      // Avancer l'index pour le prochain appel
       current_poll_index_ = (idx + 1) % poll_task_count_;
       return;  // Un seul poll par update()
     }
   }
 
-  // Aucune tâche due pour l'instant — avancer quand même l'index
   current_poll_index_ = (current_poll_index_ + 1) % poll_task_count_;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// dump_config() — log de la configuration au démarrage
+// dump_config()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::dump_config() {
@@ -346,12 +329,10 @@ void HeliosKwlComponent::dump_config() {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // publish_register() — dispatch central
-// Route chaque registre vers la bonne fonction de publication
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
   switch (reg) {
-    // ── Températures broadcastées ──
     case REG_TEMP_OUTSIDE:
     case REG_TEMP_EXTRACT:
     case REG_TEMP_SUPPLY:
@@ -359,7 +340,6 @@ void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
       publish_temperature(reg, value);
       break;
 
-    // ── CO₂ (16 bits — attend les deux octets dans le cache) ──
     case REG_CO2_HIGH:
     case REG_CO2_LOW: {
       auto h = get_cached_value(REG_CO2_HIGH);
@@ -369,107 +349,88 @@ void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
       break;
     }
 
-    // ── Humidité ──
     case REG_HUMIDITY1:
     case REG_HUMIDITY2:
       publish_humidity(reg, value);
       break;
 
-    // ── Vitesse ventilateur actuelle ──
     case REG_FAN_SPEED:
       publish_fan_speed(value);
       break;
 
-    // ── États/commandes (power, régulations, mode été, filtre, défaut) ──
     case REG_STATES:
       publish_states(value);
       break;
 
-    // ── Port I/O physique ──
     case REG_IO_PORT:
       publish_io_port(value);
       break;
 
-    // ── Alarmes CO₂ + gel ──
     case REG_ALARMS:
       publish_alarms(value);
       break;
 
-    // ── Boost / cheminée ──
     case REG_BOOST_STATE:
       publish_boost(value);
       break;
 
-    // ── Timer boost restant ──
     case REG_BOOST_REMAINING:
       publish_boost_remaining(value);
       break;
 
-    // ── Code erreur ──
     case REG_FAULT_CODE:
       publish_fault(value);
       break;
 
-    // ── Mois restants maintenance ──
     case REG_SERVICE_MONTHS:
       if (service_months_ != nullptr)
         service_months_->publish_state((float) value);
       break;
 
-    // ── Variables programme 0xAA ──
     case REG_PROGRAM_VARS:
       publish_program_vars(value);
       break;
 
-    // ── Vitesse de base ──
     case REG_BASIC_SPEED:
       if (basic_fan_speed_n_ != nullptr)
         basic_fan_speed_n_->publish_state((float) bitmask_to_speed(value));
       break;
 
-    // ── Vitesse maximale ──
     case REG_MAX_SPEED:
       if (max_fan_speed_n_ != nullptr)
         max_fan_speed_n_->publish_state((float) bitmask_to_speed(value));
       break;
 
-    // ── Température bypass ──
     case REG_BYPASS_TEMP:
       if (bypass_temp_n_ != nullptr)
         bypass_temp_n_->publish_state((float) value);
       break;
 
-    // ── Seuil dégivrage ──
     case REG_DEFROST_TEMP:
       if (preheating_temp_n_ != nullptr)
         preheating_temp_n_->publish_state(ntc_to_celsius(value));
       break;
 
-    // ── Seuil alerte givre ──
     case REG_FROST_ALARM_TEMP:
       if (frost_alarm_temp_n_ != nullptr)
         frost_alarm_temp_n_->publish_state(ntc_to_celsius(value));
       break;
 
-    // ── Hystérésis antigel ──
     case REG_FROST_HYSTERESIS:
       if (frost_hysteresis_n_ != nullptr)
         frost_hysteresis_n_->publish_state((float) value);
       break;
 
-    // ── % soufflage ──
     case REG_SUPPLY_FAN_PCT:
       if (supply_fan_pct_n_ != nullptr)
         supply_fan_pct_n_->publish_state((float) value);
       break;
 
-    // ── % extraction ──
     case REG_EXHAUST_FAN_PCT:
       if (exhaust_fan_pct_n_ != nullptr)
         exhaust_fan_pct_n_->publish_state((float) value);
       break;
 
-    // ── Seuil CO₂ (16 bits) ──
     case REG_CO2_SETPOINT_H:
     case REG_CO2_SETPOINT_L: {
       auto h = get_cached_value(REG_CO2_SETPOINT_H);
@@ -481,19 +442,16 @@ void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
       break;
     }
 
-    // ── Seuil humidité ──
     case REG_HUMIDITY_SET:
       if (humidity_setpoint_n_ != nullptr)
         humidity_setpoint_n_->publish_state(raw_to_humidity(value));
       break;
 
-    // ── Intervalle entretien ──
     case REG_SERVICE_INTERVAL:
       if (service_interval_n_ != nullptr)
         service_interval_n_->publish_state((float) value);
       break;
 
-    // ── Programme 2 (0xB5) ──
     case REG_PROGRAM2:
       if (max_speed_cont_sel_ != nullptr) {
         bool continuous = (value >> BIT_MAX_SPEED_CONT) & 0x01;
@@ -502,14 +460,13 @@ void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
       break;
 
     default:
-      // Registre non géré — log verbose uniquement
       ESP_LOGV(TAG, "Registre 0x%02X ignoré (val=0x%02X)", reg, value);
       break;
   }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_temperature() — conversion NTC → °C et publication
+// publish_temperature()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_temperature(uint8_t reg, uint8_t value) {
@@ -539,8 +496,7 @@ void HeliosKwlComponent::publish_temperature(uint8_t reg, uint8_t value) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_humidity() — conversion raw → % et publication
-// Formule Vallox : (x - 51) / 2.04  (0x33=0%, 0xFF=100%)
+// publish_humidity()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_humidity(uint8_t reg, uint8_t value) {
@@ -562,7 +518,7 @@ void HeliosKwlComponent::publish_humidity(uint8_t reg, uint8_t value) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_fan_speed() — bitmask → vitesse 1-8 et publication
+// publish_fan_speed()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_fan_speed(uint8_t value) {
@@ -570,15 +526,13 @@ void HeliosKwlComponent::publish_fan_speed(uint8_t value) {
   ESP_LOGD(TAG, "Vitesse fan bitmask=0x%02X → %u/8", value, speed);
 
   // Publier uniquement le sensor de lecture — PAS fan.make_call()
-  // fan.make_call() déclencherait HeliosKwlFan::control() → write_register()
-  // → cache mis à jour → prochain poll → publish_fan_speed() → boucle infinie
   // La synchro fan ↔ sensor est gérée dans le YAML via sensor.on_value
   if (fan_speed_sensor_ != nullptr)
     fan_speed_sensor_->publish_state((float) speed);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_states() — registre 0xA3, bitfield complet
+// publish_states() — registre 0xA3
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_states(uint8_t value) {
@@ -592,13 +546,9 @@ void HeliosKwlComponent::publish_states(uint8_t value) {
   bool fault         = (value >> BIT_FAULT)        & 0x01;
   bool filter_maint  = (value >> BIT_FILTER_MAINT) & 0x01;
 
-  // fan.make_call() supprimé — déclenche write_register → boucle infinie
-  // La synchro power ON/OFF ↔ fan est dans le YAML (fan.on_speed_set / sensor.on_value)
-  // power_on est lu mais pas utilisé directement ici (la VMC gère l'état physique)
   (void) power_on;
   (void) fault;
 
-  // Switches
   if (co2_regulation_ != nullptr)
     co2_regulation_->publish_state(co2_reg);
   if (humidity_regulation_ != nullptr)
@@ -606,49 +556,44 @@ void HeliosKwlComponent::publish_states(uint8_t value) {
   if (summer_mode_ != nullptr)
     summer_mode_->publish_state(summer);
 
-  // Binary sensors
   if (heating_indicator_ != nullptr)
     heating_indicator_->publish_state(heating);
   if (filter_maintenance_ != nullptr)
     filter_maintenance_->publish_state(filter_maint);
 
-  // Bypass état textuel
   if (bypass_state_text_ != nullptr)
     bypass_state_text_->publish_state(summer ? "Air frais" : "Chaleur conservée");
 
-  // Indicateur santé global (recalcul à chaque changement d'état)
   update_health_indicator();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_io_port() — registre 0x08, états physiques des actionneurs
+// publish_io_port() — registre 0x08
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_io_port(uint8_t value) {
   ESP_LOGD(TAG, "Port I/O 0x08 = 0x%02X", value);
 
   bool bypass     = (value >> BIT_BYPASS_OPEN)  & 0x01;
-  bool fault_rel  = (value >> BIT_FAULT_RELAY)  & 0x01;  // 0=défaut, 1=normal
-  bool supply_off = (value >> BIT_SUPPLY_FAN)   & 0x01;  // logique inversée
+  bool fault_rel  = (value >> BIT_FAULT_RELAY)  & 0x01;
+  bool supply_off = (value >> BIT_SUPPLY_FAN)   & 0x01;
   bool preheating = (value >> BIT_PREHEATING)   & 0x01;
-  bool exhst_off  = (value >> BIT_EXHAUST_FAN)  & 0x01;  // logique inversée
+  bool exhst_off  = (value >> BIT_EXHAUST_FAN)  & 0x01;
   bool ext_cont   = (value >> BIT_EXT_CONTACT)  & 0x01;
 
-  // Sensor bypass_open (0=hiver/fermé, 1=été/ouvert)
   if (bypass_open_ != nullptr)
     bypass_open_->publish_state((float)(bypass ? 1 : 0));
 
-  // Binary sensors avec logique inversée pour les ventilateurs
   if (supply_fan_running_ != nullptr)
-    supply_fan_running_->publish_state(!supply_off);  // 0=marche
+    supply_fan_running_->publish_state(!supply_off);
   if (exhaust_fan_running_ != nullptr)
-    exhaust_fan_running_->publish_state(!exhst_off);  // 0=marche
+    exhaust_fan_running_->publish_state(!exhst_off);
   if (preheating_active_ != nullptr)
     preheating_active_->publish_state(preheating);
   if (external_contact_ != nullptr)
     external_contact_->publish_state(ext_cont);
   if (fault_relay_ != nullptr)
-    fault_relay_->publish_state(!fault_rel);  // 0=fermé=normal → on publie "défaut=false"
+    fault_relay_->publish_state(!fault_rel);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -670,27 +615,37 @@ void HeliosKwlComponent::publish_alarms(uint8_t value) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_boost() — registre 0x71 (état boost/cheminée)
-// bit 0 = boost plein air actif
-// bit 1 = cycle cheminée actif
+// publish_boost() — registre 0x71 (FLAGS 6)
+// Vallox : bit 5 = activation, bit 6 = cycle en cours (read only)
+// Le mode (plein air vs cheminée) est dans 0xAA bit 5
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_boost(uint8_t value) {
   ESP_LOGD(TAG, "Boost 0x71 = 0x%02X", value);
 
-  bool fresh_air  = (value >> 0) & 0x01;
-  bool fireplace  = (value >> 1) & 0x01;
-
-  boost_cycle_active_ = (fresh_air || fireplace);
+  bool running = (value >> BIT_BOOST_RUNNING) & 0x01;
+  boost_cycle_active_ = running;
 
   const char *state_str = "Normal";
-  if (fresh_air)      state_str = "Cycle Plein Air";
-  else if (fireplace) state_str = "Cycle Cheminée";
+  float state_val = 0.0f;
+
+  if (running) {
+    // Lire le mode depuis 0xAA bit 5 pour savoir si c'est plein air ou cheminée
+    auto prog = get_cached_value(REG_PROGRAM_VARS);
+    bool is_fresh_air = prog.has_value() && ((*prog >> BIT_BOOST_FIRE_MODE) & 0x01);
+    if (is_fresh_air) {
+      state_str = "Cycle Plein Air";
+      state_val = 1.0f;
+    } else {
+      state_str = "Cycle Cheminée";
+      state_val = 2.0f;
+    }
+  }
 
   if (boost_active_text_ != nullptr)
     boost_active_text_->publish_state(state_str);
   if (boost_state_sensor_ != nullptr)
-    boost_state_sensor_->publish_state((float)(fresh_air ? 1 : fireplace ? 2 : 0));
+    boost_state_sensor_->publish_state(state_val);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -703,7 +658,7 @@ void HeliosKwlComponent::publish_boost_remaining(uint8_t value) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_fault() — registre 0x36 (code erreur)
+// publish_fault() — registre 0x36
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_fault(uint8_t value) {
@@ -718,16 +673,13 @@ void HeliosKwlComponent::publish_fault(uint8_t value) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_program_vars() — registre 0xAA (variables programme)
-// bits 0-3 : intervalle mesure sondes (1-15 min)
-// bit 4    : recherche auto seuil humidité
-// bit 5    : mode contact sec boost
+// publish_program_vars() — registre 0xAA
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_program_vars(uint8_t value) {
   ESP_LOGD(TAG, "Variables programme 0xAA = 0x%02X", value);
 
-  uint8_t interval  = (value & 0x0F);  // bits 0-3
+  uint8_t interval  = (value & 0x0F);
   bool    hum_auto  = (value >> BIT_HUMIDITY_AUTO)   & 0x01;
   bool    fire_mode = (value >> BIT_BOOST_FIRE_MODE) & 0x01;
 
@@ -742,7 +694,7 @@ void HeliosKwlComponent::publish_program_vars(uint8_t value) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// publish_co2() — reconstruit la valeur 16 bits CO₂
+// publish_co2()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::publish_co2(uint8_t high, uint8_t low) {
@@ -753,14 +705,10 @@ void HeliosKwlComponent::publish_co2(uint8_t high, uint8_t low) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// update_health_indicator() — calcule l'état agrégé "Santé du Système"
-// Vert (0) = tout va bien
-// Orange (1) = maintenance filtre requise
-// Rouge (2) = défaut actif ou alarme
+// update_health_indicator()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::update_health_indicator() {
-  // Lire depuis le cache pour éviter un poll supplémentaire
   auto states = get_cached_value(REG_STATES);
   auto alarms = get_cached_value(REG_ALARMS);
   auto fault  = get_cached_value(REG_FAULT_CODE);
@@ -771,35 +719,28 @@ void HeliosKwlComponent::update_health_indicator() {
   bool has_freeze = alarms.has_value() && ((alarms.value() >> BIT_FREEZE_ALARM) & 0x01);
   bool has_fcode  = fault.has_value()  && (fault.value() != 0x00);
 
-  const char *health;
-  float       health_val;
-
+  float health_val;
   if (has_fault || has_co2al || has_freeze || has_fcode) {
-    health     = "Défaut";
     health_val = 2.0f;
   } else if (has_filter) {
-    health     = "Maintenance filtres";
     health_val = 1.0f;
   } else {
-    health     = "Optimal";
     health_val = 0.0f;
   }
 
   if (fault_indicator_sensor_ != nullptr)
     fault_indicator_sensor_->publish_state(health_val);
-
-  // fault_description_ est géré par publish_fault() — pas touché ici
-  (void) health;  // utilisé uniquement pour LVGL plus tard
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// write_register() — séquence 3 messages Helios + vérification
+// write_register() — séquence 3 messages Helios + cache optimiste
+// Annexe B : broadcast 0x20, broadcast 0x10, direct 0x11 + CRC doublé
 // ──────────────────────────────────────────────────────────────────────────────
 
 bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   ESP_LOGD(TAG, "Écriture reg=0x%02X val=0x%02X", reg, value);
 
-  // 1. Silence bus pendant 5ms (non-bloquant sur 9600 baud)
+  // 1. Silence bus pendant 5ms
   flush_rx(5);
 
   // 2. Message 1 : Broadcast télécommandes (0x20)
@@ -807,7 +748,7 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   msg1[5] = checksum(msg1, 5);
   write_array(msg1, HELIOS_PACKET_LEN);
   flush();
-  delay(2);  // 6 octets @ 9600 baud ≈ 6ms → 2ms inter-message suffit
+  delay(2);
 
   // 3. Message 2 : Broadcast cartes mères (0x10)
   uint8_t msg2[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_ALL, reg, value, 0};
@@ -823,34 +764,28 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   write_byte(msg3[5]);
   flush();
 
-  // 5. Mise à jour optimiste du cache — la VMC broadcastera la confirmation dans ~12s
-  //    Pas de vérification bloquante : delay(50)+poll_register() bloque le scheduler
-  //    et empêche LVGL de rendre, causant des ralentissements à l'écran tactile
+  // 5. Cache optimiste — la VMC broadcastera la confirmation dans ~12s
   register_cache_[reg] = {value, millis(), true};
   ESP_LOGD(TAG, "Écriture envoyée reg=0x%02X (cache optimiste)", reg);
   return true;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// set_register_bit() / read_register_bit() — opérations sur bits individuels
-// Lit le registre depuis le cache, modifie le bit, réécrit
+// set_register_bit() / read_register_bit()
 // ──────────────────────────────────────────────────────────────────────────────
 
 bool HeliosKwlComponent::set_register_bit(uint8_t reg, uint8_t bit, bool state) {
-  // Utiliser UNIQUEMENT le cache — poll_register() est bloquant (200ms)
-  // et casse LVGL + le scheduler ESPHome quand déclenché depuis un callback tactile
   auto cached = get_cached_value(reg);
   if (!cached.has_value()) {
-    ESP_LOGW(TAG, "set_register_bit : cache vide reg=0x%02X, skip (sera retransmis)", reg);
+    ESP_LOGW(TAG, "set_register_bit : cache vide reg=0x%02X, skip", reg);
     return false;
   }
   uint8_t current = *cached;
-
   uint8_t new_val = state ? (current | (1u << bit)) : (current & ~(1u << bit));
 
   if (new_val == current) {
     ESP_LOGD(TAG, "set_register_bit : bit %u de reg=0x%02X déjà à %d", bit, reg, (int)state);
-    return true;  // Rien à faire
+    return true;
   }
 
   return write_register(reg, new_val);
@@ -870,36 +805,30 @@ bool HeliosKwlComponent::read_register_bit(uint8_t reg, uint8_t bit) {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // poll_register() — envoie une demande de lecture et attend la réponse
-// Protocole : envoyer un paquet avec val=0x00, la VMC répond avec la valeur
+// Protocole Vallox : VARIABLE=0x00, DATA=registre demandé
 // ──────────────────────────────────────────────────────────────────────────────
 
 optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries) {
   for (uint8_t attempt = 0; attempt < retries; attempt++) {
-    // Vider le buffer (même stratégie que le code legacy)
     flush_rx(5);
 
-    // Format confirmé par le code legacy ET la doc Vallox Annexe B :
-    // VARIABLE=0x00 (demande de lecture), DATA=registre demandé
     uint8_t req[HELIOS_PACKET_LEN] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
     req[5] = checksum(req, 5);
     write_array(req, HELIOS_PACKET_LEN);
     flush();
 
-    // Lire la réponse — exactement comme le legacy : TX puis read_array<6>() direct
-    // Pas de flush après TX : la réponse VMC arrive rapidement et ne doit pas être jetée
     auto response = read_array<HELIOS_PACKET_LEN>();
     if (response.has_value()) {
       const auto& arr = *response;
       if (verify_checksum(arr.data(), HELIOS_PACKET_LEN)) {
-        // Vérifier : src=MAINBOARD, dst=nous, registre=celui demandé
         if (arr[1] == HELIOS_MAINBOARD && arr[2] == address_ && arr[3] == reg) {
           uint8_t val = arr[4];
           register_cache_[reg] = {val, millis(), true};
           ESP_LOGV(TAG, "Poll reg=0x%02X → 0x%02X (tentative %u)", reg, val, attempt + 1);
           return val;
         } else {
-          ESP_LOGW(TAG, "Poll réponse inattendue : src=0x%02X dst=0x%02X reg=0x%02X (attendu reg=0x%02X)",
-                   arr[1], arr[2], arr[3], reg);
+          ESP_LOGW(TAG, "Poll réponse inattendue : src=0x%02X dst=0x%02X reg=0x%02X",
+                   arr[1], arr[2], arr[3]);
         }
       } else {
         ESP_LOGW(TAG, "Poll CRC invalide reg=0x%02X", reg);
@@ -909,11 +838,11 @@ optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries
     ESP_LOGW(TAG, "Poll timeout reg=0x%02X (tentative %u/%u)", reg, attempt + 1, retries);
   }
 
-  return {};  // Toutes les tentatives épuisées
+  return {};
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// get_cached_value() — retourne la valeur en cache si elle est valide
+// get_cached_value()
 // ──────────────────────────────────────────────────────────────────────────────
 
 optional<uint8_t> HeliosKwlComponent::get_cached_value(uint8_t reg) {
@@ -924,24 +853,15 @@ optional<uint8_t> HeliosKwlComponent::get_cached_value(uint8_t reg) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// flush_rx() — vide le buffer UART pendant timeout_ms ms
+// flush_rx()
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::flush_rx(uint32_t timeout_ms) {
-  // Reproduit le comportement du legacy flush_read_buffer() :
-  // Boucle TANT QUE des octets arrivent + attend silence de timeout_ms.
-  // Ceci garantit que les échos TX (RS485 half-duplex) sont complètement
-  // purgés avant d'appeler read_array<6>() pour lire la vraie réponse.
-  const uint32_t safety = millis() + 200;  // timeout de sécurité absolu
+  const uint32_t safety = millis() + 200;
   uint32_t last_byte_time = millis();
-  // Règle NASA n°2 : borne = 200 itérations max (200ms à 1ms/iter)
   for (uint32_t iter = 0; iter < 200; iter++) {
-    if (millis() > safety) {
-      ESP_LOGW(TAG, "flush_rx: safety timeout");
-      break;
-    }
-    if (millis() - last_byte_time >= timeout_ms)
-      break;
+    if (millis() > safety) break;
+    if (millis() - last_byte_time >= timeout_ms) break;
     for (size_t i = 0; i < RX_BUFFER_SIZE && available(); i++) {
       read();
       last_byte_time = millis();
@@ -952,12 +872,10 @@ void HeliosKwlComponent::flush_rx(uint32_t timeout_ms) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// checksum() — XOR de tous les octets (protocole Helios/Vallox)
+// checksum() — somme arithmétique 8 bits (protocole Vallox)
 // ──────────────────────────────────────────────────────────────────────────────
 
 uint8_t HeliosKwlComponent::checksum(const uint8_t *data, size_t len) {
-  // Protocole Helios/Vallox : somme arithmétique (pas XOR)
-  // Identique au legacy : std::accumulate(begin, end, 0) tronqué à 8 bits
   uint8_t crc = 0;
   for (size_t i = 0; i < len; i++)
     crc += data[i];
@@ -969,12 +887,7 @@ bool HeliosKwlComponent::verify_checksum(const uint8_t *data, size_t len) {
   return checksum(data, len - 1) == data[len - 1];
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// count_ones() — compte les bits à 1 dans un octet
-// ──────────────────────────────────────────────────────────────────────────────
-
 uint8_t HeliosKwlComponent::count_ones(uint8_t byte) {
-  // Règle NASA n°2 : borne = 8 bits max (uint8_t)
   uint8_t count = 0;
   for (uint8_t i = 0; i < 8u; i++) {
     count += (byte & 1u);
@@ -984,7 +897,7 @@ uint8_t HeliosKwlComponent::count_ones(uint8_t byte) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Conversions NTC ↔ °C
+// Conversions
 // ──────────────────────────────────────────────────────────────────────────────
 
 float HeliosKwlComponent::ntc_to_celsius(uint8_t ntc) {
@@ -992,11 +905,8 @@ float HeliosKwlComponent::ntc_to_celsius(uint8_t ntc) {
 }
 
 uint8_t HeliosKwlComponent::celsius_to_ntc(float celsius) {
-  // Recherche linéaire dans la table (la table n'est pas strictement monotone
-  // aux extrêmes, mais l'est dans la plage utile -30..+60°C)
   int target = (int) celsius;
-  // Chercher la valeur NTC la plus proche dans la plage utile (0x20..0xE0)
-  uint8_t best_ntc = 0x64;  // 0°C par défaut
+  uint8_t best_ntc = 0x64;
   int     best_diff = 255;
   for (int i = 0x20; i <= 0xE0; i++) {
     int diff = abs((int) NTC_TABLE[i] - target);
@@ -1007,11 +917,6 @@ uint8_t HeliosKwlComponent::celsius_to_ntc(float celsius) {
   }
   return best_ntc;
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Conversions humidité : raw ↔ %
-// Formule Vallox : %RH = (raw - 51) / 2.04  (0x33=0%, 0xFF=100%)
-// ──────────────────────────────────────────────────────────────────────────────
 
 float HeliosKwlComponent::raw_to_humidity(uint8_t raw) {
   if (raw < 51) return 0.0f;
@@ -1026,26 +931,15 @@ uint8_t HeliosKwlComponent::humidity_to_raw(float percent) {
   return (uint8_t)(percent * 2.04f + 51.0f);
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Conversions vitesse : bitmask ↔ 1-8
-// Vallox : 0x01=1, 0x03=2, 0x07=3, 0x0F=4, 0x1F=5, 0x3F=6, 0x7F=7, 0xFF=8
-// Comptage des bits à 1 dans l'octet
-// ──────────────────────────────────────────────────────────────────────────────
-
 uint8_t HeliosKwlComponent::speed_to_bitmask(uint8_t speed) {
   if (speed == 0) return 0x00;
   if (speed > 8)  speed = 8;
-  // (1 << speed) - 1 donne le bon masque pour 1-8
   return (uint8_t)((1u << speed) - 1u);
 }
 
 uint8_t HeliosKwlComponent::bitmask_to_speed(uint8_t mask) {
   return count_ones(mask);
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Conversions CO₂ : 16 bits ↔ deux octets
-// ──────────────────────────────────────────────────────────────────────────────
 
 uint16_t HeliosKwlComponent::bytes_to_co2(uint8_t high, uint8_t low) {
   return ((uint16_t) high << 8) | low;
@@ -1060,10 +954,7 @@ std::pair<uint8_t, uint8_t> HeliosKwlComponent::co2_to_bytes(uint16_t ppm) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::control_fan(bool on, optional<uint8_t> speed) {
-  // Écrire le bit ON/OFF dans 0xA3
   set_register_bit(REG_STATES, BIT_POWER, on);
-
-  // Écrire la vitesse si fournie
   if (speed.has_value() && *speed >= 1 && *speed <= 8) {
     write_register(REG_FAN_SPEED, speed_to_bitmask(*speed));
   }
@@ -1136,7 +1027,6 @@ void HeliosKwlComponent::control_humidity_setpoint(uint8_t percent) {
 }
 
 void HeliosKwlComponent::control_regulation_interval(uint8_t minutes) {
-  // Bits 0-3 de 0xAA — préserver les bits 4-7
   auto cached = get_cached_value(REG_PROGRAM_VARS);
   uint8_t current = cached.has_value() ? *cached : 0;
   uint8_t new_val = (current & 0xF0) | (minutes & 0x0F);
@@ -1173,22 +1063,28 @@ void HeliosKwlComponent::control_max_speed_continuous(bool continuous) {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Actions depuis les entités HA — Buttons
+// CORRIGÉ : Vallox protocole — 0x71 bit 5 active le cycle, 0xAA bit 5 choisit le mode
 // ──────────────────────────────────────────────────────────────────────────────
 
 void HeliosKwlComponent::trigger_boost_airflow() {
-  // Activer le cycle plein air (bit 0 de 0x71)
   ESP_LOGI(TAG, "Déclenchement Cycle Plein Air (45 min)");
-  write_register(REG_BOOST_STATE, 0x01);
+  // 1. Configurer mode plein air dans 0xAA bit 5 = 1
+  set_register_bit(REG_PROGRAM_VARS, BIT_BOOST_FIRE_MODE, true);
+  delay(5);
+  // 2. Activer le cycle via 0x71 bit 5 = 1
+  set_register_bit(REG_BOOST_STATE, BIT_BOOST_ACTIVATE, true);
 }
 
 void HeliosKwlComponent::trigger_boost_fireplace() {
-  // Activer le cycle cheminée (bit 1 de 0x71)
   ESP_LOGI(TAG, "Déclenchement Cycle Cheminée (15 min)");
-  write_register(REG_BOOST_STATE, 0x02);
+  // 1. Configurer mode cheminée dans 0xAA bit 5 = 0
+  set_register_bit(REG_PROGRAM_VARS, BIT_BOOST_FIRE_MODE, false);
+  delay(5);
+  // 2. Activer le cycle via 0x71 bit 5 = 1
+  set_register_bit(REG_BOOST_STATE, BIT_BOOST_ACTIVATE, true);
 }
 
 void HeliosKwlComponent::acknowledge_maintenance() {
-  // Remettre le bit filtre à 0 dans 0xA3
   ESP_LOGI(TAG, "Acquittement maintenance filtres");
   set_register_bit(REG_STATES, BIT_FILTER_MAINT, false);
 }
@@ -1198,8 +1094,6 @@ void HeliosKwlComponent::acknowledge_maintenance() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 fan::FanTraits HeliosKwlFan::get_traits() {
-  // Constructeur FanTraits(oscillation, speed, direction, speed_count)
-  // API ESPHome 2025+ : plus de setters individuels
   return fan::FanTraits(false, true, false, 8);
 }
 
@@ -1216,7 +1110,6 @@ void HeliosKwlFan::control(const fan::FanCall &call) {
 
   parent_->control_fan(on, speed);
 
-  // Mettre à jour l'état local immédiatement (optimisme UI)
   if (call.get_state().has_value())
     this->state = *call.get_state();
   if (speed.has_value())

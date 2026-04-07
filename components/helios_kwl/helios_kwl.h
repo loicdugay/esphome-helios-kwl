@@ -2,7 +2,7 @@
 
 // ──────────────────────────────────────────────────────────────────────────────
 // helios_kwl.h — Composant ESPHome pour VMC Helios KWL EC 300 Pro
-// Protocole RS485 Vallox/Helios — Refonte complète phase 1
+// Protocole RS485 Vallox/Helios — Refonte complète phase 1 — Corrigé
 // ──────────────────────────────────────────────────────────────────────────────
 
 #include "esphome/core/component.h"
@@ -38,6 +38,7 @@ static constexpr uint8_t HELIOS_ADDR_DEFAULT  = 0x2F;  // Adresse par défaut ES
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Registres broadcastés (reçus passivement — carte mère → bus, toutes les ~12s)
+// Annexe B : 2AH 2BH 2CH 32H 33H 34H 35H
 // ──────────────────────────────────────────────────────────────────────────────
 
 static constexpr uint8_t REG_CO2_HIGH         = 0x2B;
@@ -56,8 +57,8 @@ static constexpr uint8_t REG_HUMIDITY1        = 0x2F;  // Sonde humidité 1
 static constexpr uint8_t REG_HUMIDITY2        = 0x30;  // Sonde humidité 2
 static constexpr uint8_t REG_STATES           = 0xA3;  // États/commandes (bitfield)
 static constexpr uint8_t REG_IO_PORT          = 0x08;  // Port I/O physique (bitfield)
-static constexpr uint8_t REG_ALARMS           = 0x6D;  // Alarmes CO₂ + gel
-static constexpr uint8_t REG_BOOST_STATE      = 0x71;  // État boost/cheminée
+static constexpr uint8_t REG_ALARMS           = 0x6D;  // Alarmes CO₂ + gel (FLAGS 2)
+static constexpr uint8_t REG_BOOST_STATE      = 0x71;  // FLAGS 6 — boost/cheminée
 static constexpr uint8_t REG_BOOST_REMAINING  = 0x79;  // Timer boost (minutes)
 static constexpr uint8_t REG_FAULT_CODE       = 0x36;  // Code erreur brut
 static constexpr uint8_t REG_SERVICE_MONTHS   = 0xAB;  // Mois restants maintenance
@@ -102,11 +103,23 @@ static constexpr uint8_t BIT_EXHAUST_FAN      = 5;  // Ventilateur extraction (0
 static constexpr uint8_t BIT_EXT_CONTACT      = 6;  // Contact externe (bouton S)
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Bits du registre 0x6D (REG_ALARMS)
+// Bits du registre 0x6D (REG_ALARMS / FLAGS 2)
 // ──────────────────────────────────────────────────────────────────────────────
 
 static constexpr uint8_t BIT_CO2_ALARM        = 6;  // Alarme CO₂ >5000ppm
 static constexpr uint8_t BIT_FREEZE_ALARM     = 7;  // Alarme gel échangeur
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Bits du registre 0x71 (REG_BOOST_STATE / FLAGS 6)
+// Source : Vallox Digit Protocol — 71H FLAGS 6
+// bit 4 = remote control (read only)
+// bit 5 = activating the fireplace switch (read + set to 1 pour activer)
+// bit 6 = fireplace / boost function active (read only)
+// ──────────────────────────────────────────────────────────────────────────────
+
+static constexpr uint8_t BIT_BOOST_RC_ACTIVE  = 4;  // Télécommande active (read only)
+static constexpr uint8_t BIT_BOOST_ACTIVATE   = 5;  // Activer cycle boost/cheminée (écriture)
+static constexpr uint8_t BIT_BOOST_RUNNING    = 6;  // Cycle en cours (read only)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Bits du registre 0xAA (REG_PROGRAM_VARS)
@@ -171,7 +184,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   // ── Configuration (appelé depuis __init__.py / to_code) ──
   void set_address(uint8_t address) { address_ = address; }
 
-  // ── Écriture RS485 — séquence 3 messages + vérification ──
+  // ── Écriture RS485 — séquence 3 messages Helios ──
   bool write_register(uint8_t reg, uint8_t value);
 
   // ── Helpers bits individuels ──
@@ -253,7 +266,6 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
 
   // ────────────────────────────────────────────────────────────────────────────
   // Actions depuis les entités (number, select, button, switch, fan)
-  // Ces méthodes sont appelées quand l'utilisateur modifie une valeur dans HA
   // ────────────────────────────────────────────────────────────────────────────
 
   // Fan
@@ -290,8 +302,8 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void control_max_speed_continuous(bool continuous);   // false=normal, true=forcé
 
   // Buttons
-  void trigger_boost_airflow();      // Plein air 45 min (0x71)
-  void trigger_boost_fireplace();    // Cheminée 15 min (0x71)
+  void trigger_boost_airflow();      // Plein air 45 min (0xAA bit5=1 puis 0x71 bit5=1)
+  void trigger_boost_fireplace();    // Cheminée 15 min  (0xAA bit5=0 puis 0x71 bit5=1)
   void acknowledge_maintenance();    // Reset filtre (0xA3 bit 7 → 0)
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -302,7 +314,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   static uint8_t   celsius_to_ntc(float celsius);
   static float     raw_to_humidity(uint8_t raw);
   static uint8_t   humidity_to_raw(float percent);
-  static uint8_t   speed_to_bitmask(uint8_t speed);  // 1-8 → 0x01..0xFF (puissances de 2)
+  static uint8_t   speed_to_bitmask(uint8_t speed);  // 1-8 → 0x01..0xFF
   static uint8_t   bitmask_to_speed(uint8_t mask);   // 0x01..0xFF → 1-8
   static uint16_t  bytes_to_co2(uint8_t high, uint8_t low);
   static std::pair<uint8_t, uint8_t> co2_to_bytes(uint16_t ppm);
@@ -328,9 +340,6 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   // ── Drapeaux d'état internes ──
   bool     boost_cycle_active_{false};  // Un cycle boost/cheminée est en cours
   uint32_t last_rx_time_{0};       // Pour détection silence bus
-  bool     co2_sensor_detected_{false};
-  bool     hum1_sensor_detected_{false};
-  bool     hum2_sensor_detected_{false};
 
   // ── Fan natif (pointeur vers la sous-classe) ──
   HeliosKwlFan *fan_{nullptr};
@@ -359,7 +368,6 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   text_sensor::TextSensor *fault_description_{nullptr};
   text_sensor::TextSensor *boost_active_text_{nullptr};
   text_sensor::TextSensor *bypass_state_text_{nullptr};
-
 
   // Binary sensors (9)
   binary_sensor::BinarySensor *preheating_active_{nullptr};
@@ -400,14 +408,8 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   // Méthodes privées — écoute passive et parsing
   // ────────────────────────────────────────────────────────────────────────────
 
-  // Lit les octets UART disponibles et les accumule dans rx_buffer_
   void accumulate_rx();
-
-  // Tente de parser et consommer un paquet complet depuis rx_buffer_
-  // Retourne vrai si un paquet valide a été trouvé et traité
   bool process_rx_buffer();
-
-  // Dispatch selon le destinataire du paquet
   void handle_broadcast(uint8_t sender, uint8_t reg, uint8_t value);
   void handle_command(uint8_t sender, uint8_t recipient, uint8_t reg, uint8_t value);
 
@@ -415,58 +417,41 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   // Méthodes privées — publication vers les entités HA
   // ────────────────────────────────────────────────────────────────────────────
 
-  // Dispatch central : route le registre vers la bonne fonction de publication
   void publish_register(uint8_t reg, uint8_t value);
-
-  // Fonctions de publication spécialisées par groupe de registres
   void publish_temperature(uint8_t reg, uint8_t value);
   void publish_humidity(uint8_t reg, uint8_t value);
   void publish_fan_speed(uint8_t value);
-  void publish_states(uint8_t value);       // 0xA3 : power, régulations, mode, filtre...
-  void publish_io_port(uint8_t value);      // 0x08 : bypass, préchauffe, ventilateurs...
-  void publish_alarms(uint8_t value);       // 0x6D : alarmes CO₂ + gel
-  void publish_boost(uint8_t value);        // 0x71 : état boost/cheminée
-  void publish_boost_remaining(uint8_t value); // 0x79 : minutes restantes
-  void publish_fault(uint8_t value);        // 0x36 : code erreur + description
-  void publish_program_vars(uint8_t value); // 0xAA : intervalle mesure, modes
+  void publish_states(uint8_t value);
+  void publish_io_port(uint8_t value);
+  void publish_alarms(uint8_t value);
+  void publish_boost(uint8_t value);
+  void publish_boost_remaining(uint8_t value);
+  void publish_fault(uint8_t value);
+  void publish_program_vars(uint8_t value);
   void publish_co2(uint8_t high, uint8_t low);
-
-  // Publication groupée des 4 températures (appelée depuis update() sur cache)
-  void publish_all_temperatures();
-
-  // Calcule et publie l'état agrégé "Santé du Système" (fault_indicator)
   void update_health_indicator();
 
   // ────────────────────────────────────────────────────────────────────────────
   // Méthodes privées — communication RS485
   // ────────────────────────────────────────────────────────────────────────────
 
-  // Vide le buffer UART entrant pendant timeout_ms ms
   void flush_rx(uint32_t timeout_ms = 10);
 
-  // Calcule le checksum XOR du protocole Helios
+  // Calcule le checksum du protocole Helios (somme arithmétique 8 bits)
   static uint8_t  checksum(const uint8_t *data, size_t len);
-
-  // Vérifie le checksum d'un paquet de 6 octets
   static bool     verify_checksum(const uint8_t *data, size_t len);
-
-  // Compte les bits à 1 dans un octet (utilisé pour bitmask vitesse)
   static uint8_t  count_ones(uint8_t byte);
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
 // HeliosKwlFan — Entité fan native ESPHome
-// Hérite de fan::Fan ET reçoit un pointeur vers le composant principal
 // ──────────────────────────────────────────────────────────────────────────────
 
 class HeliosKwlFan : public fan::Fan, public Component {
  public:
   explicit HeliosKwlFan(HeliosKwlComponent *parent) : parent_(parent) {}
 
-  // Retourne les caractéristiques du fan (8 vitesses, pas d'oscillation)
   fan::FanTraits get_traits() override;
-
-  // Appelé par ESPHome quand l'utilisateur modifie l'état dans HA
   void control(const fan::FanCall &call) override;
 
  protected:
@@ -477,8 +462,6 @@ class HeliosKwlFan : public fan::Fan, public Component {
 }  // namespace esphome
 
 // ── Includes des sous-plateformes C++ ────────────────────────────────────────
-// Inclus ici pour que le compilateur les trouve via helios_kwl.h
-// qui est lui-même référencé correctement dans le build ESPHome
 #include "switch/helios_kwl_switch.h"
 #include "number/helios_kwl_number.h"
 #include "select/helios_kwl_select.h"
