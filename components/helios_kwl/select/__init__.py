@@ -1,8 +1,4 @@
-"""
-Sous-plateforme select — Helios KWL EC 300 Pro — Phase 2B
-CORRIGE : options SANS accents — alignees avec helios_kwl.cpp
-"""
-
+"""select — Phase 2C — options SANS accents"""
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import select
@@ -13,51 +9,21 @@ HeliosKwlBoostFireplaceSelect  = helios_kwl_ns.class_("HeliosKwlBoostFireplaceSe
 HeliosKwlHumidityAutoSelect    = helios_kwl_ns.class_("HeliosKwlHumidityAutoSelect",    select.Select)
 HeliosKwlMaxSpeedContSelect    = helios_kwl_ns.class_("HeliosKwlMaxSpeedContSelect",    select.Select)
 
-CONF_BOOST_FIREPLACE_MODE  = "boost_fireplace_mode"
-CONF_HUMIDITY_AUTO_SEARCH  = "humidity_auto_search"
-CONF_MAX_SPEED_CONTINUOUS  = "max_speed_continuous"
-
-# CORRIGE : options SANS accents — doivent correspondre EXACTEMENT aux chaines C++
 OPTIONS_BOOST_FIREPLACE = ["Cycle Cheminee", "Cycle Plein Air"]
 OPTIONS_HUMIDITY_AUTO   = ["Seuil manuel", "Apprentissage auto"]
 OPTIONS_MAX_SPEED       = ["Normal", "Ventilation maximale forcee"]
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(CONF_HELIOS_KWL_ID): cv.use_id(HeliosKwlComponent),
-        cv.Optional(CONF_BOOST_FIREPLACE_MODE): select.select_schema(
-            HeliosKwlBoostFireplaceSelect,
-            entity_category=ENTITY_CATEGORY_CONFIG,
-            icon="mdi:fireplace",
-        ),
-        cv.Optional(CONF_HUMIDITY_AUTO_SEARCH): select.select_schema(
-            HeliosKwlHumidityAutoSelect,
-            entity_category=ENTITY_CATEGORY_CONFIG,
-            icon="mdi:water-percent-alert",
-        ),
-        cv.Optional(CONF_MAX_SPEED_CONTINUOUS): select.select_schema(
-            HeliosKwlMaxSpeedContSelect,
-            entity_category=ENTITY_CATEGORY_CONFIG,
-            icon="mdi:fan-speed-3",
-        ),
-    }
-)
-
+CONFIG_SCHEMA = cv.Schema({
+    cv.GenerateID(CONF_HELIOS_KWL_ID): cv.use_id(HeliosKwlComponent),
+    cv.Optional("boost_fireplace_mode"): select.select_schema(HeliosKwlBoostFireplaceSelect, entity_category=ENTITY_CATEGORY_CONFIG, icon="mdi:fireplace"),
+    cv.Optional("humidity_auto_search"): select.select_schema(HeliosKwlHumidityAutoSelect, entity_category=ENTITY_CATEGORY_CONFIG, icon="mdi:water-percent-alert"),
+    cv.Optional("max_speed_continuous"): select.select_schema(HeliosKwlMaxSpeedContSelect, entity_category=ENTITY_CATEGORY_CONFIG, icon="mdi:fan-speed-3"),
+})
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_HELIOS_KWL_ID])
-
-    if CONF_BOOST_FIREPLACE_MODE in config:
-        sel = await select.new_select(config[CONF_BOOST_FIREPLACE_MODE], options=OPTIONS_BOOST_FIREPLACE)
-        cg.add(sel.set_parent(parent))
-        cg.add(parent.set_boost_fireplace_mode_select(sel))
-
-    if CONF_HUMIDITY_AUTO_SEARCH in config:
-        sel = await select.new_select(config[CONF_HUMIDITY_AUTO_SEARCH], options=OPTIONS_HUMIDITY_AUTO)
-        cg.add(sel.set_parent(parent))
-        cg.add(parent.set_humidity_auto_search_select(sel))
-
-    if CONF_MAX_SPEED_CONTINUOUS in config:
-        sel = await select.new_select(config[CONF_MAX_SPEED_CONTINUOUS], options=OPTIONS_MAX_SPEED)
-        cg.add(sel.set_parent(parent))
-        cg.add(parent.set_max_speed_continuous_select(sel))
+    for key, opts in [("boost_fireplace_mode", OPTIONS_BOOST_FIREPLACE), ("humidity_auto_search", OPTIONS_HUMIDITY_AUTO), ("max_speed_continuous", OPTIONS_MAX_SPEED)]:
+        if key in config:
+            sel = await select.new_select(config[key], options=opts)
+            cg.add(sel.set_parent(parent))
+            cg.add(getattr(parent, f"set_{key}_select")(sel))
