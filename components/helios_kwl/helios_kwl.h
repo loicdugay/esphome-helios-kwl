@@ -1,5 +1,5 @@
 #pragma once
-// helios_kwl.h — Phase 2B — persistance switches + verification ecriture
+// helios_kwl.h — Phase 2C — 3 strategies Vallox + imperatif n°4
 
 #include "esphome/core/component.h"
 #include "esphome/core/optional.h"
@@ -26,15 +26,10 @@ static constexpr uint8_t HELIOS_BROADCAST_RC  = 0x20;
 static constexpr uint8_t HELIOS_PACKET_LEN    = 6;
 static constexpr uint8_t HELIOS_ADDR_DEFAULT  = 0x2F;
 
-// ── Registres broadcast (recus passivement ~12s) ──
-static constexpr uint8_t REG_CO2_HIGH         = 0x2B;
-static constexpr uint8_t REG_CO2_LOW          = 0x2C;
-static constexpr uint8_t REG_TEMP_OUTSIDE     = 0x32;
-static constexpr uint8_t REG_TEMP_EXHAUST     = 0x33;
-static constexpr uint8_t REG_TEMP_EXTRACT     = 0x34;
-static constexpr uint8_t REG_TEMP_SUPPLY      = 0x35;
+// ── Strategie 1 : Broadcast (ecoute passive, pas de constantes necessaires) ──
+// 0x2A, 0x2B, 0x2C, 0x32, 0x33, 0x34, 0x35
 
-// ── Registres polles ──
+// ── Strategie 2 : Polling cyclique 6s ──
 static constexpr uint8_t REG_FAN_SPEED        = 0x29;
 static constexpr uint8_t REG_HUMIDITY1        = 0x2F;
 static constexpr uint8_t REG_HUMIDITY2        = 0x30;
@@ -43,7 +38,22 @@ static constexpr uint8_t REG_IO_PORT          = 0x08;
 static constexpr uint8_t REG_ALARMS           = 0x6D;
 static constexpr uint8_t REG_BOOST_STATE      = 0x71;
 static constexpr uint8_t REG_BOOST_REMAINING  = 0x79;
+
+// ── Strategie 1 (broadcast) ──
+static constexpr uint8_t REG_CO2_HIGH         = 0x2B;
+static constexpr uint8_t REG_CO2_LOW          = 0x2C;
+static constexpr uint8_t REG_TEMP_OUTSIDE     = 0x32;
+static constexpr uint8_t REG_TEMP_EXHAUST     = 0x33;
+static constexpr uint8_t REG_TEMP_EXTRACT     = 0x34;
+static constexpr uint8_t REG_TEMP_SUPPLY      = 0x35;
+
+// ── Strategie 3 : Init + 1h ──
+static constexpr uint8_t REG_CO2_SENSORS      = 0x2D;
 static constexpr uint8_t REG_FAULT_CODE       = 0x36;
+static constexpr uint8_t REG_POST_HEAT_ON     = 0x55;
+static constexpr uint8_t REG_POST_HEAT_OFF    = 0x56;
+static constexpr uint8_t REG_FLAGS_SYSTEM     = 0x6F;
+static constexpr uint8_t REG_FLAGS_MODE       = 0x70;
 static constexpr uint8_t REG_SERVICE_MONTHS   = 0xAB;
 static constexpr uint8_t REG_PROGRAM_VARS     = 0xAA;
 static constexpr uint8_t REG_BASIC_SPEED      = 0xA9;
@@ -60,14 +70,14 @@ static constexpr uint8_t REG_HUMIDITY_SET     = 0xAE;
 static constexpr uint8_t REG_SERVICE_INTERVAL = 0xA6;
 static constexpr uint8_t REG_PROGRAM2         = 0xB5;
 
-// ── Bits 0xA3 — bits 0-3 writable (keys), bits 4-7 READ ONLY ──
+// ── Bits 0xA3 — bits 0-3 writable, bits 4-7 read only ──
 static constexpr uint8_t BIT_POWER            = 0;
 static constexpr uint8_t BIT_CO2_REG          = 1;
 static constexpr uint8_t BIT_HUMIDITY_REG     = 2;
 static constexpr uint8_t BIT_SUMMER_MODE      = 3;
-static constexpr uint8_t BIT_HEATING          = 5;  // read only
-static constexpr uint8_t BIT_FAULT            = 6;  // read only
-static constexpr uint8_t BIT_FILTER_MAINT     = 7;  // read only
+static constexpr uint8_t BIT_HEATING          = 5;
+static constexpr uint8_t BIT_FAULT            = 6;
+static constexpr uint8_t BIT_FILTER_MAINT     = 7;
 
 // ── Bits 0x08 ──
 static constexpr uint8_t BIT_BYPASS_OPEN      = 1;
@@ -81,7 +91,7 @@ static constexpr uint8_t BIT_EXT_CONTACT      = 6;
 static constexpr uint8_t BIT_CO2_ALARM        = 6;
 static constexpr uint8_t BIT_FREEZE_ALARM     = 7;
 
-// ── Bits 0x71 — FLAGS 6 ──
+// ── Bits 0x71 ──
 static constexpr uint8_t BIT_BOOST_ACTIVATE   = 5;
 static constexpr uint8_t BIT_BOOST_RUNNING    = 6;
 
@@ -95,9 +105,12 @@ static constexpr uint8_t BIT_MAX_SPEED_CONT   = 0;
 // ── Tailles ──
 static constexpr size_t RX_BUFFER_SIZE        = 512;
 static constexpr size_t REGISTER_COUNT        = 256;
-
-// ── Nombre max d'ecritures en attente de verification ──
 static constexpr size_t MAX_PENDING_WRITES    = 8;
+
+// ── Intervalles des 3 strategies ──
+static constexpr uint32_t POLL_INTERVAL_S2    = 6000;      // Strategie 2 : 6s
+static constexpr uint32_t POLL_INTERVAL_S3    = 3600000;   // Strategie 3 : 1h
+static constexpr uint32_t BROADCAST_SALVE_MS  = 80;        // Duree estimee salve broadcast (~7 paquets)
 
 struct RegisterCache {
   uint8_t  value{0};
@@ -111,12 +124,11 @@ struct PollTask {
   uint32_t last_polled;
 };
 
-// Ecriture en attente de verification
 struct PendingWrite {
   uint8_t  reg;
   uint8_t  value;
-  uint32_t written_at;   // millis() de l'ecriture
-  uint8_t  retries;      // nombre de re-ecritures restantes
+  uint32_t written_at;
+  uint8_t  retries;
   bool     active;
 };
 
@@ -142,7 +154,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_fan_speed(uint8_t speed);
   void set_fan_on(bool on);
 
-  // ── Setters entites ──
+  // ── Setters entites (appeles par les sous-plateformes Python) ──
   void set_temperature_outside_sensor(sensor::Sensor *s)     { temperature_outside_    = s; }
   void set_temperature_extract_sensor(sensor::Sensor *s)     { temperature_extract_    = s; }
   void set_temperature_supply_sensor(sensor::Sensor *s)      { temperature_supply_     = s; }
@@ -157,11 +169,9 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_fan_speed_sensor(sensor::Sensor *s)               { fan_speed_sensor_       = s; }
   void set_fault_indicator_sensor(sensor::Sensor *s)         { fault_indicator_sensor_ = s; }
   void set_boost_state_sensor(sensor::Sensor *s)             { boost_state_sensor_     = s; }
-
   void set_fault_description_text(text_sensor::TextSensor *s){ fault_description_      = s; }
   void set_boost_active_text(text_sensor::TextSensor *s)     { boost_active_text_      = s; }
   void set_bypass_state_text(text_sensor::TextSensor *s)     { bypass_state_text_      = s; }
-
   void set_preheating_active_sensor(binary_sensor::BinarySensor *s) { preheating_active_  = s; }
   void set_freeze_alarm_sensor(binary_sensor::BinarySensor *s)      { freeze_alarm_       = s; }
   void set_co2_alarm_sensor(binary_sensor::BinarySensor *s)         { co2_alarm_          = s; }
@@ -171,12 +181,10 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_exhaust_fan_running_sensor(binary_sensor::BinarySensor *s){exhaust_fan_running_= s; }
   void set_external_contact_sensor(binary_sensor::BinarySensor *s)  { external_contact_   = s; }
   void set_fault_relay_sensor(binary_sensor::BinarySensor *s)       { fault_relay_        = s; }
-
   void set_co2_regulation_switch(switch_::Switch *s)   { co2_regulation_  = s; }
   void set_humidity_regulation_switch(switch_::Switch *s){ humidity_regulation_ = s; }
   void set_summer_mode_switch(switch_::Switch *s)      { summer_mode_     = s; }
   void set_fan(HeliosKwlFan *f) { fan_ = f; }
-
   void set_basic_fan_speed_number(number::Number *n)      { basic_fan_speed_n_    = n; }
   void set_max_fan_speed_number(number::Number *n)        { max_fan_speed_n_      = n; }
   void set_bypass_temp_number(number::Number *n)          { bypass_temp_n_        = n; }
@@ -189,7 +197,6 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void set_supply_fan_percent_number(number::Number *n)   { supply_fan_pct_n_     = n; }
   void set_exhaust_fan_percent_number(number::Number *n)  { exhaust_fan_pct_n_    = n; }
   void set_service_interval_number(number::Number *n)     { service_interval_n_   = n; }
-
   void set_boost_fireplace_mode_select(select::Select *s) { boost_fireplace_sel_  = s; }
   void set_humidity_auto_search_select(select::Select *s) { humidity_auto_sel_    = s; }
   void set_max_speed_continuous_select(select::Select *s) { max_speed_cont_sel_   = s; }
@@ -235,73 +242,57 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   size_t rx_buffer_len_{0};
   std::array<RegisterCache, REGISTER_COUNT> register_cache_{};
 
-  static constexpr size_t POLL_TABLE_SIZE = 32;
-  std::array<PollTask, POLL_TABLE_SIZE> poll_tasks_{};
-  size_t poll_task_count_{0};
-  size_t current_poll_index_{0};
+  // ── Tables de polling separees par strategie ──
+  static constexpr size_t S2_TABLE_SIZE = 8;   // Strategie 2
+  static constexpr size_t S3_TABLE_SIZE = 32;  // Strategie 3
+  std::array<PollTask, S2_TABLE_SIZE> s2_tasks_{};
+  size_t s2_count_{0};
+  size_t s2_index_{0};
+  std::array<PollTask, S3_TABLE_SIZE> s3_tasks_{};
+  size_t s3_count_{0};
+  size_t s3_index_{0};
 
   // Ecritures en attente de verification
   std::array<PendingWrite, MAX_PENDING_WRITES> pending_writes_{};
+
+  // ── Imperatif n°4 : detection salve broadcast ──
+  bool     broadcast_salve_active_{false};
+  uint32_t broadcast_salve_start_{0};
 
   bool     boost_cycle_active_{false};
   uint32_t last_rx_time_{0};
   HeliosKwlFan *fan_{nullptr};
 
-  // ── Desired state pour les bits de 0xA3 (persistance) ──
-  // -1 = pas de commande en attente, 0/1 = etat desire
+  // ── Persistance switches (desired state) ──
   int8_t desired_co2_reg_{-1};
   int8_t desired_hum_reg_{-1};
   int8_t desired_summer_{-1};
 
-  // Sensors (14)
-  sensor::Sensor *temperature_outside_{nullptr};
-  sensor::Sensor *temperature_extract_{nullptr};
-  sensor::Sensor *temperature_supply_{nullptr};
-  sensor::Sensor *temperature_exhaust_{nullptr};
-  sensor::Sensor *humidity_sensor1_{nullptr};
-  sensor::Sensor *humidity_sensor2_{nullptr};
-  sensor::Sensor *co2_concentration_{nullptr};
-  sensor::Sensor *boost_remaining_{nullptr};
-  sensor::Sensor *fault_code_{nullptr};
-  sensor::Sensor *service_months_{nullptr};
-  sensor::Sensor *bypass_open_{nullptr};
-  sensor::Sensor *fan_speed_sensor_{nullptr};
-  sensor::Sensor *fault_indicator_sensor_{nullptr};
-  sensor::Sensor *boost_state_sensor_{nullptr};
-
+  // ── Entites ──
+  sensor::Sensor *temperature_outside_{nullptr}, *temperature_extract_{nullptr};
+  sensor::Sensor *temperature_supply_{nullptr}, *temperature_exhaust_{nullptr};
+  sensor::Sensor *humidity_sensor1_{nullptr}, *humidity_sensor2_{nullptr};
+  sensor::Sensor *co2_concentration_{nullptr}, *boost_remaining_{nullptr};
+  sensor::Sensor *fault_code_{nullptr}, *service_months_{nullptr};
+  sensor::Sensor *bypass_open_{nullptr}, *fan_speed_sensor_{nullptr};
+  sensor::Sensor *fault_indicator_sensor_{nullptr}, *boost_state_sensor_{nullptr};
   text_sensor::TextSensor *fault_description_{nullptr};
   text_sensor::TextSensor *boost_active_text_{nullptr};
   text_sensor::TextSensor *bypass_state_text_{nullptr};
-
-  binary_sensor::BinarySensor *preheating_active_{nullptr};
-  binary_sensor::BinarySensor *freeze_alarm_{nullptr};
-  binary_sensor::BinarySensor *co2_alarm_{nullptr};
-  binary_sensor::BinarySensor *filter_maintenance_{nullptr};
+  binary_sensor::BinarySensor *preheating_active_{nullptr}, *freeze_alarm_{nullptr};
+  binary_sensor::BinarySensor *co2_alarm_{nullptr}, *filter_maintenance_{nullptr};
   binary_sensor::BinarySensor *heating_indicator_{nullptr};
-  binary_sensor::BinarySensor *supply_fan_running_{nullptr};
-  binary_sensor::BinarySensor *exhaust_fan_running_{nullptr};
-  binary_sensor::BinarySensor *external_contact_{nullptr};
-  binary_sensor::BinarySensor *fault_relay_{nullptr};
-
-  switch_::Switch *co2_regulation_{nullptr};
-  switch_::Switch *humidity_regulation_{nullptr};
-  switch_::Switch *summer_mode_{nullptr};
-
-  number::Number *basic_fan_speed_n_{nullptr};
-  number::Number *max_fan_speed_n_{nullptr};
-  number::Number *bypass_temp_n_{nullptr};
-  number::Number *preheating_temp_n_{nullptr};
-  number::Number *frost_alarm_temp_n_{nullptr};
-  number::Number *frost_hysteresis_n_{nullptr};
-  number::Number *co2_setpoint_n_{nullptr};
-  number::Number *humidity_setpoint_n_{nullptr};
+  binary_sensor::BinarySensor *supply_fan_running_{nullptr}, *exhaust_fan_running_{nullptr};
+  binary_sensor::BinarySensor *external_contact_{nullptr}, *fault_relay_{nullptr};
+  switch_::Switch *co2_regulation_{nullptr}, *humidity_regulation_{nullptr}, *summer_mode_{nullptr};
+  number::Number *basic_fan_speed_n_{nullptr}, *max_fan_speed_n_{nullptr};
+  number::Number *bypass_temp_n_{nullptr}, *preheating_temp_n_{nullptr};
+  number::Number *frost_alarm_temp_n_{nullptr}, *frost_hysteresis_n_{nullptr};
+  number::Number *co2_setpoint_n_{nullptr}, *humidity_setpoint_n_{nullptr};
   number::Number *regulation_interval_n_{nullptr};
-  number::Number *supply_fan_pct_n_{nullptr};
-  number::Number *exhaust_fan_pct_n_{nullptr};
+  number::Number *supply_fan_pct_n_{nullptr}, *exhaust_fan_pct_n_{nullptr};
   number::Number *service_interval_n_{nullptr};
-
-  select::Select *boost_fireplace_sel_{nullptr};
-  select::Select *humidity_auto_sel_{nullptr};
+  select::Select *boost_fireplace_sel_{nullptr}, *humidity_auto_sel_{nullptr};
   select::Select *max_speed_cont_sel_{nullptr};
 
   // ── Methodes privees ──
@@ -309,7 +300,6 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   bool process_rx_buffer();
   void handle_broadcast(uint8_t sender, uint8_t reg, uint8_t value);
   void handle_command(uint8_t sender, uint8_t recipient, uint8_t reg, uint8_t value);
-
   void publish_register(uint8_t reg, uint8_t value);
   void publish_temperature(uint8_t reg, uint8_t value);
   void publish_humidity(uint8_t reg, uint8_t value);
@@ -323,12 +313,9 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void publish_program_vars(uint8_t value);
   void publish_co2(uint8_t high, uint8_t low);
   void update_health_indicator();
-
-  // Re-applique les bits desires sur 0xA3 si la VMC les a ecrases
   void enforce_desired_states();
-  // Verifie les ecritures en attente et retente si necessaire
   void check_pending_writes();
-
+  bool is_broadcast_salve_active();
   void flush_rx(uint32_t timeout_ms = 10);
   static uint8_t  checksum(const uint8_t *data, size_t len);
   static bool     verify_checksum(const uint8_t *data, size_t len);
