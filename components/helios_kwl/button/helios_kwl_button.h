@@ -1,5 +1,4 @@
 #pragma once
-
 #include "esphome/components/button/button.h"
 #include "../helios_kwl.h"
 
@@ -23,7 +22,6 @@ class HeliosKwlBoostFireplaceButton : public HeliosKwlButtonBase {
   void press_action() override { if (parent_) parent_->trigger_boost_fireplace(); }
 };
 
-// NOUVEAU : bouton arret cycle boost/cheminee
 class HeliosKwlStopBoostButton : public HeliosKwlButtonBase {
  protected:
   void press_action() override { if (parent_) parent_->stop_boost_cycle(); }
