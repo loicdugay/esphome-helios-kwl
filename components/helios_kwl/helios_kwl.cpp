@@ -327,10 +327,27 @@ void HeliosKwlComponent::publish_humidity(uint8_t reg, uint8_t v) {
   if (reg == REG_HUMIDITY1 && humidity_sensor1_) humidity_sensor1_->publish_state(p);
   if (reg == REG_HUMIDITY2 && humidity_sensor2_) humidity_sensor2_->publish_state(p);
 }
-void HeliosKwlComponent::publish_fan_speed(uint8_t v) { if (fan_speed_sensor_) fan_speed_sensor_->publish_state((float)bitmask_to_speed(v)); }
+void HeliosKwlComponent::publish_fan_speed(uint8_t v) {
+  uint8_t speed = bitmask_to_speed(v);
+  if (fan_speed_sensor_) fan_speed_sensor_->publish_state((float)speed);
+  // Synchroniser l'entite fan avec la vitesse reelle lue depuis la VMC
+  if (fan_ && speed > 0) {
+    fan_->speed = speed;
+    if (!fan_->state) { fan_->state = true; }  // La VMC tourne
+    fan_->publish_state();
+  }
+}
 
 void HeliosKwlComponent::publish_states(uint8_t v) {
+  bool power=(v>>BIT_POWER)&1;
   bool co2r=(v>>BIT_CO2_REG)&1, humr=(v>>BIT_HUMIDITY_REG)&1, summer=(v>>BIT_SUMMER_MODE)&1;
+  // Synchroniser l'entite fan ON/OFF avec le bit power reel de la VMC
+  if (fan_) {
+    if (fan_->state != power) {
+      fan_->state = power;
+      fan_->publish_state();
+    }
+  }
   if (co2_regulation_)      co2_regulation_->publish_state(co2r);
   if (humidity_regulation_) humidity_regulation_->publish_state(humr);
   if (summer_mode_)         summer_mode_->publish_state(summer);
