@@ -183,7 +183,7 @@ bool HeliosKwlComponent::do_one_s2_poll() {
     PollTask &t = s2_tasks_[idx];
     if ((now - t.last_polled) < t.interval_ms) continue;
     if (t.reg == REG_BOOST_REMAINING && !boost_cycle_active_) { t.last_polled = now; continue; }
-    auto r = poll_register(t.reg, 2);
+    auto r = poll_register(t.reg, 1);
     t.last_polled = now;
     if (r.has_value()) publish_register(t.reg, *r);
     s2_index_ = (idx + 1) % s2_count_;
@@ -198,7 +198,7 @@ bool HeliosKwlComponent::do_one_s3_poll() {
     size_t idx = (s3_index_ + i) % s3_count_;
     PollTask &t = s3_tasks_[idx];
     if ((now - t.last_polled) < t.interval_ms) continue;
-    auto r = poll_register(t.reg, 2);
+    auto r = poll_register(t.reg, 1);
     t.last_polled = now;
     if (r.has_value()) publish_register(t.reg, *r);
     s3_index_ = (idx + 1) % s3_count_;
@@ -418,10 +418,12 @@ bool HeliosKwlComponent::set_register_bit(uint8_t reg, uint8_t bit, bool state) 
 }
 bool HeliosKwlComponent::read_register_bit(uint8_t reg, uint8_t bit) {
   auto c=get_cached_value(reg); if (c.has_value()) return (*c>>bit)&1;
-  auto p=poll_register(reg,2); if (p.has_value()) return (*p>>bit)&1; return false;
+  auto p=poll_register(reg,1); if (p.has_value()) return (*p>>bit)&1; return false;
 }
 
 optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries) {
+  // Ne pas poller si salve broadcast en cours (imperatif n°4)
+  if (is_broadcast_salve_active()) return {};
   for (uint8_t a=0; a<retries; a++) {
     flush_rx(5);
     uint8_t req[6]={HELIOS_START_BYTE,address_,HELIOS_MAINBOARD,0x00,reg,0}; req[5]=checksum(req,5); write_array(req,6); flush();

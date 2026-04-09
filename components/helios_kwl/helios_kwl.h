@@ -81,7 +81,7 @@ static constexpr size_t REGISTER_COUNT = 256;
 static constexpr size_t MAX_PENDING_WRITES = 8;
 static constexpr uint32_t POLL_INTERVAL_S2 = 6000;
 static constexpr uint32_t POLL_INTERVAL_S3 = 3600000;
-static constexpr uint32_t BROADCAST_SALVE_MS = 80;
+static constexpr uint32_t BROADCAST_SALVE_MS = 150;  // 7 paquets × ~20ms
 
 // Ratio alternance : 5 cycles S2 puis 1 cycle S3
 static constexpr uint8_t S2_TURNS_BEFORE_S3 = 5;
