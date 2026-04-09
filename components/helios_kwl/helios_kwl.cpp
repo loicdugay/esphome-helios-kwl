@@ -91,6 +91,14 @@ void HeliosKwlComponent::setup() {
   s3_index_ = 0;
   s2_turn_counter_ = 0;
 
+  // CRITICAL: forcer tous les S3 last_polled pour qu'ils soient "dus" immediatement au boot.
+  // Avec last_polled=0 et interval=3600000, le check (millis()-0) >= 3600000 est false
+  // pendant la premiere heure ! On utilise l'underflow unsigned pour forcer le premier poll.
+  uint32_t boot_time = millis();
+  for (size_t i = 0; i < s3_count_; i++) {
+    s3_tasks_[i].last_polled = boot_time - POLL_INTERVAL_S3 - 1;
+  }
+
   last_rx_time_ = millis();
   ESP_LOGI(TAG, "S2: %u regs @6s | S3: %u regs @1h | ratio 5:1", s2_count_, s3_count_);
 }
