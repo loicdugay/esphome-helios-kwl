@@ -203,7 +203,7 @@ fan:
     ventilation_fan:
       id: helios_kwl_fan
       name: ${name_fan}
-      restore_mode: RESTORE_DEFAULT_ON
+      restore_mode: RESTORE_DEFAULT_OFF
       on_speed_set:
         then:
           - lambda: id(arc_updating) = true;
