@@ -261,8 +261,9 @@ void HeliosKwlComponent::dump_config() {
 // ══════════════════════════════════════════════════════════════
 
 void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
-  // FIX 2 : ne publier que si la valeur a change
-  if (!should_publish(reg, value)) return;
+  // Dedup ciblee : seule update_health_indicator() est dedupliquee (voir plus bas).
+  // Les publications registre passent toujours — ESPHome gere son propre dedup
+  // via les filtres (EMA etc) cote YAML.
 
   switch (reg) {
     case REG_TEMP_OUTSIDE: case REG_TEMP_EXTRACT: case REG_TEMP_SUPPLY: case REG_TEMP_EXHAUST:
@@ -372,7 +373,12 @@ void HeliosKwlComponent::update_health_indicator() {
   bool co2a=al.has_value()&&((al.value()>>BIT_CO2_ALARM)&1), freeze=al.has_value()&&((al.value()>>BIT_FREEZE_ALARM)&1);
   bool fc=ft.has_value()&&ft.value()!=0;
   float v = (fault||co2a||freeze||fc) ? 2.0f : (filter ? 1.0f : 0.0f);
-  if (fault_indicator_sensor_) fault_indicator_sensor_->publish_state(v);
+  // Dedup ciblee : ne publier que si la valeur sante a change
+  uint8_t vi = (uint8_t)v;
+  if (!has_published_[0xFF] || last_published_[0xFF] != vi) {
+    last_published_[0xFF] = vi; has_published_[0xFF] = true;
+    if (fault_indicator_sensor_) fault_indicator_sensor_->publish_state(v);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -388,8 +394,6 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   write_array(m3,6); write_byte(m3[5]); flush();
   if (reg == REG_BYPASS_TEMP) { delay(2); write_array(m3,6); write_byte(m3[5]); flush(); }
   register_cache_[reg] = {value, millis(), true};
-  // Forcer re-publication apres ecriture (invalider dedup)
-  has_published_[reg] = false;
   return true;
 }
 
