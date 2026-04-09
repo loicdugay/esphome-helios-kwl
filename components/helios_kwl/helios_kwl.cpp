@@ -138,9 +138,6 @@ bool HeliosKwlComponent::process_rx_buffer() {
   uint8_t src = rx_buffer_[1], dst = rx_buffer_[2], reg = rx_buffer_[3], val = rx_buffer_[4];
   register_cache_[reg] = {val, millis(), true};
 
-  // Imperatif n°4 : detection salve broadcast
-  if (dst == HELIOS_BROADCAST_RC) { broadcast_salve_start_ = millis(); broadcast_salve_active_ = true; }
-
   if (dst == HELIOS_BROADCAST_RC || dst == HELIOS_BROADCAST_ALL) handle_broadcast(src, reg, val);
   else if (dst == address_) handle_command(src, dst, reg, val);
 
@@ -148,10 +145,15 @@ bool HeliosKwlComponent::process_rx_buffer() {
   rx_buffer_len_ -= HELIOS_PACKET_LEN; return true;
 }
 
+// Imperatif n°4 — methode robuste : silence reel du bus
+// Le protocole dit : attendre que le bus soit silencieux avant d'emettre.
+// On mesure le temps depuis le dernier octet recu (last_rx_time_).
+// Si < 10ms : le bus est encore actif (broadcast ou autre trame en cours).
+// Le timer fixe BROADCAST_SALVE_MS est supprime — on se base sur le silence reel.
 bool HeliosKwlComponent::is_broadcast_salve_active() {
-  if (!broadcast_salve_active_) return false;
-  if ((millis() - broadcast_salve_start_) > BROADCAST_SALVE_MS) { broadcast_salve_active_ = false; return false; }
-  return true;
+  // Bus considere libre si aucun octet recu depuis 10ms
+  // A 9600 bps, 6 octets = ~6.3ms, donc 10ms = silence entre 2 paquets
+  return (millis() - last_rx_time_) < 10;
 }
 
 void HeliosKwlComponent::handle_broadcast(uint8_t s, uint8_t reg, uint8_t val) { publish_register(reg, val); }
@@ -492,7 +494,14 @@ void HeliosKwlComponent::acknowledge_maintenance() { ESP_LOGI(TAG,"Reset filtres
 
 fan::FanTraits HeliosKwlFan::get_traits() { return fan::FanTraits(false,true,false,8); }
 void HeliosKwlFan::control(const fan::FanCall &call) {
-  if(!parent_)return; optional<uint8_t> spd; if(call.get_speed().has_value())spd=(uint8_t)*call.get_speed();
+  if(!parent_)return;
+  // Ignorer les commandes fan tant que la VMC n'a pas ete lue (empeche le restore ESPHome
+  // d'ecraser l'etat reel de la VMC avec speed=8 au boot/flash)
+  if (!parent_->get_cached_value(REG_STATES).has_value()) {
+    ESP_LOGW(TAG, "Fan control ignore — VMC pas encore lue");
+    return;
+  }
+  optional<uint8_t> spd; if(call.get_speed().has_value())spd=(uint8_t)*call.get_speed();
   bool on=this->state; if(call.get_state().has_value())on=*call.get_state();
   parent_->control_fan(on,spd); if(call.get_state().has_value())this->state=*call.get_state(); if(spd.has_value())this->speed=*spd; this->publish_state();
 }
