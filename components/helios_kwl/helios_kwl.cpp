@@ -441,14 +441,20 @@ bool HeliosKwlComponent::read_register_bit(uint8_t reg, uint8_t bit) {
 }
 
 optional<uint8_t> HeliosKwlComponent::poll_register(uint8_t reg, uint8_t retries) {
-  // Ne pas poller si salve broadcast en cours (imperatif n°4)
   if (is_broadcast_salve_active()) return {};
   for (uint8_t a=0; a<retries; a++) {
     flush_rx(5);
     uint8_t req[6]={HELIOS_START_BYTE,address_,HELIOS_MAINBOARD,0x00,reg,0}; req[5]=checksum(req,5); write_array(req,6); flush();
-    auto resp=read_array<HELIOS_PACKET_LEN>();
-    if (resp.has_value()) { const auto &r=*resp;
-      if (verify_checksum(r.data(),6)&&r[1]==HELIOS_MAINBOARD&&r[2]==address_&&r[3]==reg) { register_cache_[reg]={r[4],millis(),true}; return r[4]; }
+    // Lecture non-bloquante : max 50ms, abandon silencieux si incomplet
+    uint8_t buf[6]; size_t got = 0;
+    uint32_t deadline = millis() + 50;
+    while (got < 6 && millis() < deadline) {
+      if (available()) { read_byte(&buf[got]); got++; }
+      else { yield(); }
+    }
+    if (got == 6 && verify_checksum(buf, 6) && buf[1]==HELIOS_MAINBOARD && buf[2]==address_ && buf[3]==reg) {
+      register_cache_[reg] = {buf[4], millis(), true};
+      return buf[4];
     }
   }
   return {};
