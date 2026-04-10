@@ -512,7 +512,24 @@ void HeliosKwlComponent::control_max_speed_continuous(bool c) { set_register_bit
 
 void HeliosKwlComponent::trigger_boost_airflow() { ESP_LOGI(TAG,"Cycle Plein Air"); set_register_bit(REG_PROGRAM_VARS,BIT_BOOST_FIRE_MODE,true); delay(5); set_register_bit(REG_BOOST_STATE,BIT_BOOST_ACTIVATE,true); }
 void HeliosKwlComponent::trigger_boost_fireplace() { ESP_LOGI(TAG,"Cycle Cheminee"); set_register_bit(REG_PROGRAM_VARS,BIT_BOOST_FIRE_MODE,false); delay(5); set_register_bit(REG_BOOST_STATE,BIT_BOOST_ACTIVATE,true); }
-void HeliosKwlComponent::stop_boost_cycle() { ESP_LOGI(TAG,"Arret cycle"); write_register(REG_BOOST_STATE,0x00); boost_cycle_active_=false; if(boost_active_text_)boost_active_text_->publish_state("Normal"); if(boost_state_sensor_)boost_state_sensor_->publish_state(0); if(boost_remaining_)boost_remaining_->publish_state(0); }
+void HeliosKwlComponent::stop_boost_cycle() {
+  ESP_LOGI(TAG,"Arret cycle");
+  write_register(REG_BOOST_STATE,0x00);
+  boost_cycle_active_=false;
+  if(boost_active_text_)boost_active_text_->publish_state("Normal");
+  if(boost_state_sensor_)boost_state_sensor_->publish_state(0);
+  if(boost_remaining_)boost_remaining_->publish_state(0);
+  // Invalider les caches et forcer un re-poll immediat de 0x08 et 0x71
+  // pour que le binary_sensor exhaust soit mis a jour des que la VMC reactive l'extraction
+  register_cache_[REG_IO_PORT].valid = false;
+  register_cache_[REG_BOOST_STATE].valid = false;
+  // Forcer ces registres a etre "dus" au prochain update()
+  for (size_t i = 0; i < s2_count_; i++) {
+    if (s2_tasks_[i].reg == REG_IO_PORT || s2_tasks_[i].reg == REG_BOOST_STATE) {
+      s2_tasks_[i].last_polled = millis() - POLL_INTERVAL_S2 - 1;
+    }
+  }
+}
 void HeliosKwlComponent::acknowledge_maintenance() { ESP_LOGI(TAG,"Reset filtres"); auto iv=get_cached_value(REG_SERVICE_INTERVAL); write_register_with_verify(REG_SERVICE_MONTHS,iv.has_value()?*iv:4); }
 
 fan::FanTraits HeliosKwlFan::get_traits() { return fan::FanTraits(false,true,false,8); }
