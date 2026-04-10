@@ -513,26 +513,15 @@ void HeliosKwlComponent::control_max_speed_continuous(bool c) { set_register_bit
 void HeliosKwlComponent::trigger_boost_airflow() { ESP_LOGI(TAG,"Cycle Plein Air"); set_register_bit(REG_PROGRAM_VARS,BIT_BOOST_FIRE_MODE,true); delay(5); set_register_bit(REG_BOOST_STATE,BIT_BOOST_ACTIVATE,true); }
 void HeliosKwlComponent::trigger_boost_fireplace() { ESP_LOGI(TAG,"Cycle Cheminee"); set_register_bit(REG_PROGRAM_VARS,BIT_BOOST_FIRE_MODE,false); delay(5); set_register_bit(REG_BOOST_STATE,BIT_BOOST_ACTIVATE,true); }
 void HeliosKwlComponent::stop_boost_cycle() {
-  ESP_LOGI(TAG,"Arret cycle — force timer 0x79 a 0");
-  // Forcer la fin naturelle du cycle : ecrire 0 dans le timer 0x79.
-  // La VMC detecte le timer a 0 et execute sa propre sequence de fin :
-  // remet bit 5/6 de 0x71 a 0, redemarre l'extracteur, met a jour 0x08.
-  // C'est le mecanisme natif de fin de cycle, propre et fiable.
-  write_register(REG_BOOST_REMAINING, 0x00);
-  boost_cycle_active_ = false;
-  if (boost_active_text_)  boost_active_text_->publish_state("Normal");
-  if (boost_state_sensor_) boost_state_sensor_->publish_state(0);
-  if (boost_remaining_)    boost_remaining_->publish_state(0);
-  // Invalider les caches pour forcer une relecture fraiche au prochain poll
-  register_cache_[REG_IO_PORT].valid = false;
-  register_cache_[REG_BOOST_STATE].valid = false;
-  register_cache_[REG_BOOST_REMAINING].valid = false;
-  // Forcer un re-poll prioritaire de 0x08 et 0x71 dans les prochaines secondes
-  for (size_t i = 0; i < s2_count_; i++) {
-    if (s2_tasks_[i].reg == REG_IO_PORT || s2_tasks_[i].reg == REG_BOOST_STATE) {
-      s2_tasks_[i].last_polled = millis() - POLL_INTERVAL_S2 - 1;
-    }
-  }
+  ESP_LOGI(TAG,"Arret cycle — force timer 0x79 a 1 min (fin naturelle dans ~1 min)");
+  // Astuce : au lieu de forcer timer=0 (que la VMC interprete comme un glitch et
+  // redeclenche un nouveau cycle), on met timer=1. La VMC va naturellement
+  // decompter a 0 dans ~1 min et executer sa sequence de fin native :
+  // efface 0x71, redemarre l'extracteur, met a jour 0x08. C'est propre.
+  write_register(REG_BOOST_REMAINING, 0x01);
+  // On ne touche pas a boost_cycle_active_ ni aux text_sensors :
+  // les prochains polls S2 de 0x71/0x79 refleteront naturellement la fin du cycle
+  // quand la VMC l'aura effectivement terminee.
 }
 void HeliosKwlComponent::acknowledge_maintenance() { ESP_LOGI(TAG,"Reset filtres"); auto iv=get_cached_value(REG_SERVICE_INTERVAL); write_register_with_verify(REG_SERVICE_MONTHS,iv.has_value()?*iv:4); }
 
