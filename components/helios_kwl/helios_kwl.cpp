@@ -360,6 +360,8 @@ void HeliosKwlComponent::publish_states(uint8_t v) {
   if (desired_summer_>=0  && summer==(desired_summer_==1)) desired_summer_ = -1;
 }
 void HeliosKwlComponent::publish_io_port(uint8_t v) {
+  ESP_LOGI(TAG, "DIAG Port 0x08 = 0x%02X  bits[7..0] = %d%d%d%d%d%d%d%d",
+    v, (v>>7)&1,(v>>6)&1,(v>>5)&1,(v>>4)&1,(v>>3)&1,(v>>2)&1,(v>>1)&1,v&1);
   if (bypass_open_)         bypass_open_->publish_state((float)((v>>BIT_BYPASS_OPEN)&1));
   if (supply_fan_running_)  supply_fan_running_->publish_state(!((v>>BIT_SUPPLY_FAN)&1));
   if (exhaust_fan_running_) exhaust_fan_running_->publish_state(!((v>>BIT_EXHAUST_FAN)&1));
