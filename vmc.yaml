@@ -1,68 +1,80 @@
 # ═══════════════════════════════════════════════════════════════
 # VMC Helios KWL EC 300 Pro — Lilygo T-Panel S3
-# Phase 2B — persistance switches, verification ecriture, referentiel
-# Fichier principal — l'affichage LVGL est dans vmc_lvgl.yaml
+# Refonte phase 1 — nouveau composant, 45 entités, écoute passive RS485
+# ═══════════════════════════════════════════════════════════════
+#
+# Avant de compiler :
+#   1. Créer secrets.yaml (wifi_ssid, wifi_password, ap_password, api_key, ota_password)
+#   2. Placer dans fonts/ :
+#      - RobotoCondensed-Regular.ttf
+#      - materialdesignicons-webfont.ttf
+#   3. Adapter les substitutions ci-dessous
+#
+# Documentation : https://github.com/loicdugay/esphome-helios-kwl
 # ═══════════════════════════════════════════════════════════════
 
+# ─── Substitutions — personnalisation sans toucher au reste ───
 substitutions:
+  # Identité
   device_name: "vmc"
   friendly_name: "VMC"
-  room_humidity1: "Salle de bain"
+  # Noms des pièces
+  room_humidity1: "S. de bain"
   room_humidity2: "Cuisine"
+  # Fuseau horaire
   timezone: "Europe/Paris"
 
-  # ── Noms HA conformes au referentiel helios-kwl-referentiel-v6.md ──
-  name_fan:             "Ventilation"
-  name_temp_outside:    "Température air extérieur"
+  # ── Traduction FR des noms HA ──────────────────────────────
+  name_fan:             "Ventilation VMC"
+  name_temp_outside:    "Température extérieure"
   name_temp_exhaust:    "Température air rejeté"
-  name_temp_extract:    "Température air intérieur"
-  name_temp_supply:     "Température air soufflé"
+  name_temp_extract:    "Température air repris"
+  name_temp_supply:     "Température air neuf"
   name_humidity1:       "Humidité ${room_humidity1}"
   name_humidity2:       "Humidité ${room_humidity2}"
-  name_co2:             "Niveau CO₂"
+  name_co2:             "Niveau CO2"
   name_fan_speed:       "Vitesse de ventilation"
   name_boost_remaining: "Fin du cycle dans..."
   name_boost_active:    "Cycle en cours"
-  name_boost_state_num: "Cycle en cours (num)"
   name_bypass_state:    "Gestion thermique"
-  name_bypass_num:      "Gestion thermique (num)"
-  name_summer:          "Mode Fraîcheur"
-  name_health:          "Santé du Système"
+  name_health:          "Sante du systeme"
   name_fault_code:      "Code de diagnostic"
-  name_fault_desc:      "Détail du diagnostic"
-  name_preheating:      "Auto-dégivrage"
-  name_freeze_alarm:    "Alerte Givre"
-  name_co2_alarm:       "Alerte CO₂"
-  name_filter_maint:    "État des filtres"
-  name_service_months:  "Prochain remplacement"
+  name_fault_desc:      "Detail du diagnostic"
+  name_preheating:      "Auto-degivrage"
+  name_freeze_alarm:    "Alerte givre"
+  name_co2_alarm:       "Alerte CO2"
+  name_filter_maint:    "Etat des filtres"
+  name_service_months:  "Prochain remplacement filtres"
   name_heating:         "Appoint de chaleur"
   name_supply_fan:      "Ventilateur soufflage"
   name_exhaust_fan:     "Ventilateur extraction"
   name_ext_contact:     "Contact externe"
-  name_fault_relay:     "Relais défaut"
-  name_co2_reg:         "Gestion intelligente (CO₂)"
-  name_hum_reg:         "Gestion intelligente (%HR)"
+  name_fault_relay:     "Relais defaut"
+  name_boost_state_num: "Etat cycle num"
+  name_bypass_num:      "Etat bypass num"
+  name_co2_reg:         "Gestion intelligente CO2"
+  name_hum_reg:         "Gestion intelligente HR"
+  name_summer:          "Mode Fraicheur"
   name_basic_speed:     "Ventilation nominale"
   name_max_speed:       "Ventilation maximale"
-  name_bypass_temp:     "Seuil de fraîcheur"
-  name_preheat_temp:    "Seuil de dégivrage"
-  name_frost_temp:      "Seuil Alerte Givre"
-  name_frost_hyst:      "Hystérésis antigel"
-  name_co2_set:         "Seuil CO₂"
-  name_hum_set:         "Seuil Humidité"
-  name_reg_interval:    "Fréquence d'analyse des sondes"
-  name_supply_pct:      "Ajustement Soufflage"
-  name_exhaust_pct:     "Ajustement Extraction"
+  name_bypass_temp:     "Seuil de fraicheur"
+  name_preheat_temp:    "Seuil de degivrage"
+  name_frost_temp:      "Seuil alerte givre"
+  name_frost_hyst:      "Hysteresis antigel"
+  name_co2_set:         "Seuil CO2"
+  name_hum_set:         "Seuil humidite"
+  name_reg_interval:    "Frequence analyse sondes"
+  name_supply_pct:      "Ajustement soufflage"
+  name_exhaust_pct:     "Ajustement extraction"
   name_svc_interval:    "Intervalle entretien"
   name_boost_mode:      "Cycle commande murale"
-  name_hum_auto:        "Détection humidité"
-  name_max_cont:        "Ventilation maximale forcée"
+  name_hum_auto:        "Detection humidite"
+  name_max_cont:        "Ventilation maximale forcee"
   name_btn_air:         "Cycle Plein Air"
-  name_btn_fire:        "Cycle Cheminée"
-  name_btn_stop:        "Arrêter le cycle"
+  name_btn_fire:        "Cycle Cheminee"
   name_btn_ack:         "Confirmer remplacement filtres"
   name_wifi_signal:     "Signal WiFi"
-  name_backlight:       "Rétroéclairage écran"
+  name_backlight:       "Retroeclairage ecran"
 
 # ─── Plateforme ────────────────────────────────────────────────
 
@@ -92,7 +104,7 @@ psram:
   mode: quad
   speed: 80MHz
 
-# ─── Reseau ────────────────────────────────────────────────────
+# ─── Réseau ────────────────────────────────────────────────────
 
 api:
   encryption:
@@ -127,7 +139,7 @@ external_components:
       url: https://github.com/loicdugay/esphome-helios-kwl/
     refresh: 0s
 
-# ─── I2C + expandeur ──────────────────────────────────────────
+# ─── I2C ──────────────────────────────────────────────────────
 
 i2c:
   - id: tp_i2c
@@ -158,7 +170,7 @@ touchscreen:
     on_touch:
       - script.execute: backlight_timeout
 
-# ─── UART RS485 ────────────────────────────────────────────────
+# ─── UART RS485 — GPIO15/16 T-Panel S3 ────────────────────────
 
 uart:
   id: uart_bus
@@ -196,6 +208,9 @@ script:
           brightness: 5%
 
 # ─── Fan natif ────────────────────────────────────────────────
+# MIGRATION : output helios_kwl + fan speed → fan helios_kwl natif
+# Plus besoin d'output intermédiaire ni de power_state binary_sensor.
+# Le fan natif gère ON/OFF + vitesse 1-8 directement via RS485.
 
 fan:
   - platform: helios_kwl
@@ -203,7 +218,7 @@ fan:
     ventilation_fan:
       id: helios_kwl_fan
       name: ${name_fan}
-      restore_mode: RESTORE_DEFAULT_OFF
+      restore_mode: RESTORE_DEFAULT_ON
       on_speed_set:
         then:
           - lambda: id(arc_updating) = true;
@@ -212,7 +227,10 @@ fan:
               value: !lambda "return x;"
           - lvgl.label.update:
               id: label_fan_speed
-              text: !lambda 'char b[4]; sprintf(b,"%d",(int)x); return std::string(b);'
+              text: !lambda |-
+                char buf[4];
+                sprintf(buf, "%d", (int)x);
+                return std::string(buf);
           - lambda: id(arc_updating) = false;
       on_turn_off:
         then:
@@ -232,7 +250,10 @@ fan:
               value: !lambda "return (int)id(helios_kwl_fan).speed;"
           - lvgl.label.update:
               id: label_fan_speed
-              text: !lambda 'char b[4]; sprintf(b,"%d",(int)id(helios_kwl_fan).speed); return std::string(b);'
+              text: !lambda |-
+                char buf[4];
+                sprintf(buf, "%d", (int)id(helios_kwl_fan).speed);
+                return std::string(buf);
           - lambda: id(arc_updating) = false;
 
 # ─── Sensors ───────────────────────────────────────────────────
@@ -248,6 +269,8 @@ sensor:
     fan_speed:
       name: ${name_fan_speed}
       id: sensor_fan_speed
+      # Pas de on_value : le sensor publie vers HA automatiquement.
+      # L'arc LVGL est géré par fan.on_speed_set/on_turn_on/off.
 
     temperature_outside:
       name: ${name_temp_outside}
@@ -260,7 +283,9 @@ sensor:
         then:
           - lvgl.label.update:
               id: label_temp_outside
-              text: !lambda 'char b[8]; sprintf(b,"%.0f C",x); return std::string(b);'
+              text:
+                format: "%.0f C"
+                args: [ x ]
 
     temperature_exhaust:
       name: ${name_temp_exhaust}
@@ -273,8 +298,11 @@ sensor:
         then:
           - lvgl.label.update:
               id: label_temp_exhaust
-              text: !lambda 'char b[8]; sprintf(b,"%.0f C",x); return std::string(b);'
+              text:
+                format: "%.0f C"
+                args: [ x ]
 
+    # MIGRATION temperature_inside -> temperature_extract
     temperature_extract:
       name: ${name_temp_extract}
       id: sensor_temp_extract
@@ -286,8 +314,11 @@ sensor:
         then:
           - lvgl.label.update:
               id: label_temp_inside
-              text: !lambda 'char b[8]; sprintf(b,"%.0f C",x); return std::string(b);'
+              text:
+                format: "%.0f C"
+                args: [ x ]
 
+    # MIGRATION temperature_incoming -> temperature_supply
     temperature_supply:
       name: ${name_temp_supply}
       id: sensor_temp_supply
@@ -299,8 +330,11 @@ sensor:
         then:
           - lvgl.label.update:
               id: label_temp_incoming
-              text: !lambda 'char b[8]; sprintf(b,"%.0f C",x); return std::string(b);'
+              text:
+                format: "%.0f C"
+                args: [ x ]
 
+    # MIGRATION humidity1 -> humidity_sensor1
     humidity_sensor1:
       name: ${name_humidity1}
       id: sensor_humidity1
@@ -312,8 +346,11 @@ sensor:
         then:
           - lvgl.label.update:
               id: label_humidity_bathroom
-              text: !lambda 'char b[8]; sprintf(b,"%.0f %%",x); return std::string(b);'
+              text:
+                format: "%.0f %%"
+                args: [ x ]
 
+    # MIGRATION humidity2 -> humidity_sensor2
     humidity_sensor2:
       name: ${name_humidity2}
       id: sensor_humidity2
@@ -325,7 +362,9 @@ sensor:
         then:
           - lvgl.label.update:
               id: label_humidity_kitchen
-              text: !lambda 'char b[8]; sprintf(b,"%.0f %%",x); return std::string(b);'
+              text:
+                format: "%.0f %%"
+                args: [ x ]
 
     co2_concentration:
       name: ${name_co2}
@@ -374,6 +413,8 @@ text_sensor:
       id: ts_bypass_state
 
 # ─── Binary sensors ────────────────────────────────────────────
+# MIGRATION power_state supprimé — le fan natif gère ON/OFF directement
+# MIGRATION bypass_state (bool) -> summer_mode switch + bypass_open sensor
 
 binary_sensor:
   - platform: helios_kwl
@@ -395,6 +436,7 @@ binary_sensor:
     co2_alarm:
       name: ${name_co2_alarm}
       id: bs_co2_alarm
+      icon: "mdi:molecule-co2"
 
     filter_maintenance:
       name: ${name_filter_maint}
@@ -426,6 +468,8 @@ binary_sensor:
       id: bs_fault_relay
 
 # ─── Switches ──────────────────────────────────────────────────
+# MIGRATION winter_mode -> summer_mode (logique inversée corrigée)
+# summer_mode ON = mode ete = bypass autorise
 
 switch:
   - platform: helios_kwl
@@ -453,6 +497,8 @@ switch:
       name: ${name_hum_reg}
       id: sw_hum_reg
 
+  # ── Synchro bidirectionnelle widget LVGL ↔ switch ESPHome ─────────────
+  # Conforme doc : https://esphome.io/components/switch/lvgl/
   - platform: lvgl
     widget: sw_lvgl_summer
     id: sw_lvgl_summer_entity
@@ -535,14 +581,11 @@ button:
     boost_fireplace:
       name: ${name_btn_fire}
       id: btn_boost_fire
-    stop_boost:
-      name: ${name_btn_stop}
-      id: btn_stop_boost
     acknowledge_maintenance:
       name: ${name_btn_ack}
       id: btn_ack_maint
 
-# ─── Retroeclairage ───────────────────────────────────────────
+# ─── Rétroéclairage ───────────────────────────────────────────
 
 output:
   - platform: ledc
@@ -561,7 +604,7 @@ light:
     default_transition_length: 500ms
     gamma_correct: 1.0
 
-# ─── SPI + Ecran ──────────────────────────────────────────────
+# ─── SPI via XL9535 ───────────────────────────────────────────
 
 spi:
   - id: lcd_spi
@@ -573,11 +616,13 @@ spi:
       xl9535:
       number: 15
 
+# ─── Ecran MIPI RGB T-Panel S3 ────────────────────────────────
+
 display:
   - platform: mipi_rgb
     model: t-panel-s3
 
-# ─── Polices (SANS accents dans les glyphes texte) ────────────
+# ─── Polices ──────────────────────────────────────────────────
 
 font:
   - file: "fonts/RobotoCondensed-Regular.ttf"
@@ -587,11 +632,21 @@ font:
     extras:
       - file: "fonts/materialdesignicons-webfont.ttf"
         glyphs: [
-          "\U000F18D7", "\U000F0F45", "\U000F0922", "\U000F058E",
-          "\U000F1A45", "\U000F0EBD", "\U000F0F8B", "\U000F0210",
-          "\U000F006A", "\U000F0815", "\U000F0798", "\U000F092E",
-          "\U000F012C", "\U000F1629", "\U000F0717",
-          "\U000F0141", "\U000F0142", "\U000F04DB",
+          "\U000F18D7",  # sun-thermometer-outline
+          "\U000F0F45",  # home-thermometer-outline
+          "\U000F0922",  # wifi-strength-2
+          "\U000F058E",  # water-percent
+          "\U000F1A45",  # heat-wave
+          "\U000F0EBD",  # progress-wrench
+          "\U000F0F8B",  # transit-detour (bypass)
+          "\U000F0210",  # fan
+          "\U000F006A",  # autorenew
+          "\U000F0815",  # fan-off
+          "\U000F0798",  # arrow-expand-right (exhaust)
+          "\U000F092E",  # wifi-strength-off
+          "\U000F012C",  # check-circle (ack maintenance)
+          "\U000F1629",  # fireplace
+          "\U000F0717",  # weather-windy
           ]
 
   - file: "fonts/RobotoCondensed-Regular.ttf"
@@ -622,17 +677,21 @@ time:
           - lvgl.label.update:
               id: label_date_time
               text: !lambda |-
-                const char* d[] = {"Dim","Lun","Mar","Mer","Jeu","Ven","Sam"};
-                auto n = id(sntp_time).now();
-                char b[32];
-                sprintf(b, "%s %02d/%02d/%04d %02d:%02d", d[n.day_of_week-1], n.day_of_month, n.month, n.year, n.hour, n.minute);
-                return std::string(b);
+                const char* days[] = {"Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"};
+                const char* months[] = {"janvier","fevrier","mars","avril","mai","juin",
+                                        "juillet","aout","septembre","octobre","novembre","decembre"};
+                auto now = id(sntp_time).now();
+                char buffer[48];
+                sprintf(buffer, "%s %02d %s %04d %02d:%02d",
+                        days[now.day_of_week - 1],
+                        now.day_of_month,
+                        months[now.month - 1],
+                        now.year,
+                        now.hour,
+                        now.minute);
+                return std::string(buffer);
 
-# ═══════════════════════════════════════════════════════════════
-# vmc_lvgl.yaml — Affichage LVGL pour T-Panel S3
-# Phase 2B — COPIER ce contenu a la fin de vmc.yaml
-# Labels SANS accents (police Roboto ne les contient pas)
-# ═══════════════════════════════════════════════════════════════
+# ─── LVGL ─────────────────────────────────────────────────────
 
 lvgl:
   style_definitions:
@@ -646,7 +705,8 @@ lvgl:
   pages:
 
     # ════════════════════════════════════════════════════════
-    # PAGE 1 — mesures temps reel
+    # PAGE PRINCIPALE — mesures temps reel
+    # Structure LVGL conservee a l'identique de l'original
     # ════════════════════════════════════════════════════════
 
     - id: main_page
@@ -659,12 +719,47 @@ lvgl:
               value: !lambda "return (int)id(helios_kwl_fan).speed;"
           - lvgl.label.update:
               id: label_fan_speed
-              text: !lambda 'char b[4]; sprintf(b,"%d",(int)id(helios_kwl_fan).speed); return std::string(b);'
+              text: !lambda |-
+                char buf[4];
+                sprintf(buf, "%d", (int)id(helios_kwl_fan).speed);
+                return std::string(buf);
           - lambda: id(arc_updating) = false;
+          - if:
+              condition:
+                lambda: return id(sw_summer).state;
+              then:
+                - lvgl.label.update:
+                    id: label_bypass
+                    text_opa: 100%
+              else:
+                - lvgl.label.update:
+                    id: label_bypass
+                    text_opa: 30%
+          - if:
+              condition:
+                lambda: return id(bs_preheating).state;
+              then:
+                - lvgl.label.update:
+                    id: label_heat
+                    text_opa: 100%
+              else:
+                - lvgl.label.update:
+                    id: label_heat
+                    text_opa: 30%
+          - if:
+              condition:
+                lambda: return id(bs_filter_maint).state;
+              then:
+                - lvgl.label.update:
+                    id: label_maintenance
+                    text_opa: 100%
+              else:
+                - lvgl.label.update:
+                    id: label_maintenance
+                    text_opa: 30%
 
       widgets:
 
-        # ── Barre superieure : date + icones etat ──
         - label:
             id: label_date_time
             pad_top: 15px
@@ -724,7 +819,6 @@ lvgl:
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 4
 
-        # ── Arc vitesse central ──
         - arc:
             x: 8
             y: -5
@@ -761,7 +855,10 @@ lvgl:
                                 speed: !lambda "return x;"
                       - lvgl.label.update:
                           id: label_fan_speed
-                          text: !lambda 'char b[4]; sprintf(b,"%d",(int)x); return std::string(b);'
+                          text: !lambda |-
+                            char buf[4];
+                            sprintf(buf, "%d", (int)x);
+                            return std::string(buf);
                       - lambda: id(arc_updating) = false;
 
         - label:
@@ -791,7 +888,10 @@ lvgl:
                           value: !lambda "return (int)id(helios_kwl_fan).speed;"
                       - lvgl.label.update:
                           id: label_fan_speed
-                          text: !lambda 'char b[4]; sprintf(b,"%d",(int)id(helios_kwl_fan).speed); return std::string(b);'
+                          text: !lambda |-
+                            char buf[4];
+                            sprintf(buf, "%d", (int)id(helios_kwl_fan).speed);
+                            return std::string(buf);
                 - lambda: id(arc_updating) = false;
 
         - label:
@@ -802,7 +902,6 @@ lvgl:
             text_font: ash_icons_24
             text_color: 0xFFFFFF
 
-        # ── Grille mesures bas ──
         - obj:
             align: BOTTOM_MID
             width: 400
@@ -817,92 +916,213 @@ lvgl:
               pad_row: 0px
               pad_column: 20px
             widgets:
-              # L1C1 Interieur
-              - obj:
-                  width: 180
-                  height: 50
-                  styles: obj_styles
-                  grid_cell_row_pos: 0
-                  grid_cell_column_pos: 0
-                  scrollbar_mode: "OFF"
-                  layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
-                  widgets:
-                    - label: {text: "\U000F0F45", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
-                    - label: {text: "Interieur", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
-                    - label: {id: label_temp_inside, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
-              # L1C2 Neuf
-              - obj:
-                  width: 180
-                  height: 50
-                  styles: obj_styles
-                  grid_cell_row_pos: 0
-                  grid_cell_column_pos: 1
-                  scrollbar_mode: "OFF"
-                  layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
-                  widgets:
-                    - label: {text: "\U000F006A", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
-                    - label: {text: "Souffle", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
-                    - label: {id: label_temp_incoming, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
-              # L2C1 Exterieur
-              - obj:
-                  width: 180
-                  height: 50
-                  styles: obj_styles
-                  grid_cell_row_pos: 1
-                  grid_cell_column_pos: 0
-                  scrollbar_mode: "OFF"
-                  layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
-                  widgets:
-                    - label: {text: "\U000F18D7", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
-                    - label: {text: "Exterieur", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
-                    - label: {id: label_temp_outside, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
-              # L2C2 Rejete
-              - obj:
-                  width: 180
-                  height: 50
-                  styles: obj_styles
-                  grid_cell_row_pos: 1
-                  grid_cell_column_pos: 1
-                  scrollbar_mode: "OFF"
-                  layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
-                  widgets:
-                    - label: {text: "\U000F0798", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
-                    - label: {text: "Rejete", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
-                    - label: {id: label_temp_exhaust, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
-              # L3C1 Humidite 1
-              - obj:
-                  width: 180
-                  height: 50
-                  styles: obj_styles
-                  grid_cell_row_pos: 2
-                  grid_cell_column_pos: 0
-                  scrollbar_mode: "OFF"
-                  layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
-                  widgets:
-                    - label: {text: "\U000F058E", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
-                    - label: {text: "S. de bain", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
-                    - label: {id: label_humidity_bathroom, text: "--%", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
-              # L3C2 Humidite 2
-              - obj:
-                  width: 180
-                  height: 50
-                  styles: obj_styles
-                  grid_cell_row_pos: 2
-                  grid_cell_column_pos: 1
-                  scrollbar_mode: "OFF"
-                  layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
-                  widgets:
-                    - label: {text: "\U000F058E", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
-                    - label: {text: "Cuisine", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
-                    - label: {id: label_humidity_kitchen, text: "--%", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
 
-        # ── Navigation vers commandes ──
+              - obj:
+                  width: 180
+                  height: 60
+                  styles: obj_styles
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  scrollbar_mode: "OFF"
+                  layout:
+                    pad_column: 0
+                    type: GRID
+                    grid_rows: [FR(1)]
+                    grid_columns: [FR(20), FR(60), FR(20)]
+                  widgets:
+                    - label:
+                        text: "\U000F0F45"
+                        text_font: ash_icons_24
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                    - label:
+                        text: "Interieur"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                    - label:
+                        id: label_temp_inside
+                        text: "--C"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+
+              - obj:
+                  width: 180
+                  height: 60
+                  styles: obj_styles
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 1
+                  scrollbar_mode: "OFF"
+                  layout:
+                    pad_column: 0
+                    type: GRID
+                    grid_rows: [FR(1)]
+                    grid_columns: [FR(20), FR(60), FR(20)]
+                  widgets:
+                    - label:
+                        text: "\U000F006A"
+                        text_font: ash_icons_24
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                    - label:
+                        text: "Neuf"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                    - label:
+                        id: label_temp_incoming
+                        text: "--C"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+
+              - obj:
+                  width: 180
+                  height: 60
+                  styles: obj_styles
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 0
+                  scrollbar_mode: "OFF"
+                  layout:
+                    pad_column: 0
+                    type: GRID
+                    grid_rows: [FR(1)]
+                    grid_columns: [FR(20), FR(60), FR(20)]
+                  widgets:
+                    - label:
+                        text: "\U000F18D7"
+                        text_font: ash_icons_24
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                    - label:
+                        text: "Exterieur"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                    - label:
+                        id: label_temp_outside
+                        text: "--C"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+
+              - obj:
+                  width: 180
+                  height: 60
+                  styles: obj_styles
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 1
+                  scrollbar_mode: "OFF"
+                  layout:
+                    pad_column: 0
+                    type: GRID
+                    grid_rows: [FR(1)]
+                    grid_columns: [FR(20), FR(60), FR(20)]
+                  widgets:
+                    - label:
+                        text: "\U000F0798"
+                        text_font: ash_icons_24
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                    - label:
+                        text: "Rejete"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                    - label:
+                        id: label_temp_exhaust
+                        text: "--C"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+
+              - obj:
+                  width: 180
+                  height: 60
+                  styles: obj_styles
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 0
+                  scrollbar_mode: "OFF"
+                  layout:
+                    pad_column: 0
+                    type: GRID
+                    grid_rows: [FR(1)]
+                    grid_columns: [FR(20), FR(60), FR(20)]
+                  widgets:
+                    - label:
+                        text: "\U000F058E"
+                        text_font: ash_icons_24
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                    - label:
+                        text: "${room_humidity1}"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                    - label:
+                        id: label_humidity_bathroom
+                        text: "--%"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+
+              - obj:
+                  width: 180
+                  height: 60
+                  styles: obj_styles
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 1
+                  scrollbar_mode: "OFF"
+                  layout:
+                    pad_column: 0
+                    type: GRID
+                    grid_rows: [FR(1)]
+                    grid_columns: [FR(20), FR(60), FR(20)]
+                  widgets:
+                    - label:
+                        text: "\U000F058E"
+                        text_font: ash_icons_24
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                    - label:
+                        text: "${room_humidity2}"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                    - label:
+                        id: label_humidity_kitchen
+                        text: "--%"
+                        text_font: roboto_font_20
+                        text_color: 0xFFFFFF
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+
+        # Bouton acces page commandes
         - button:
             id: btn_goto_commands
-            align: RIGHT_MID
-            x: -4
-            width: 40
-            height: 64
+            align: BOTTOM_RIGHT
+            x: -8
+            y: -8
+            width: 56
+            height: 40
             bg_color: 0x222244
             radius: 8
             on_press:
@@ -910,14 +1130,13 @@ lvgl:
                 - lvgl.page.show: commands_page
             widgets:
               - label:
-                  text: "\U000F0142"
+                  text: "\U000F0F8B"
                   text_font: ash_icons_24
                   text_color: 0xCCCCFF
                   align: CENTER
 
     # ════════════════════════════════════════════════════════
-    # PAGE 2 — commandes VMC
-    # Grille 2 colonnes x 3 lignes, positionnement absolu
+    # PAGE COMMANDES — cycles, saison, maintenance
     # ════════════════════════════════════════════════════════
 
     - id: commands_page
@@ -926,33 +1145,58 @@ lvgl:
         then:
           - lvgl.label.update:
               id: label_summer_state
-              text: !lambda 'return id(sw_summer).state ? std::string("ON") : std::string("OFF");'
+              text: !lambda "return id(sw_summer).state ? std::string(\"Fraicheur\") : std::string(\"Hiver\");"
           - lvgl.label.update:
               id: label_service_months
-              text: !lambda 'char b[12]; sprintf(b,"%.0f mois",id(sensor_service_months).state); return std::string(b);'
+              text: !lambda |-
+                char buf[12];
+                sprintf(buf, "%.0f mois", id(sensor_service_months).state);
+                return std::string(buf);
           - lvgl.label.update:
               id: label_health_state
               text: !lambda |-
                 int v = (int)id(sensor_health).state;
                 if (v == 2) return "Defaut";
                 if (v == 1) return "Filtre !";
-                return "OK";
+                return "Optimal";
+          - lvgl.label.update:
+              id: label_boost_air_timer
+              text: !lambda |-
+                if (id(ts_boost_active).state == "Cycle Plein Air") {
+                  char buf[12];
+                  sprintf(buf, "%.0f min", id(sensor_boost_remaining).state);
+                  return std::string(buf);
+                }
+                return std::string("45 min");
+          - lvgl.label.update:
+              id: label_boost_fire_timer
+              text: !lambda |-
+                if (id(ts_boost_active).state == "Cycle Cheminee") {
+                  char buf[12];
+                  sprintf(buf, "%.0f min", id(sensor_boost_remaining).state);
+                  return std::string(buf);
+                }
+                return std::string("15 min");
+          - lvgl.label.update:
+              id: label_boost_icon
+              text_opa: !lambda "return (id(ts_boost_active).state != \"Normal\") ? 100 : 30;"
 
       widgets:
 
         - label:
             align: TOP_MID
-            y: 8
+            y: 12
             text: "Commandes VMC"
             text_font: roboto_font_24
             text_color: 0xFFFFFF
 
-        # ── Retour page 1 ──
+        # Retour page principale
         - button:
-            align: LEFT_MID
-            x: 4
-            width: 40
-            height: 64
+            align: TOP_LEFT
+            x: 8
+            y: 8
+            width: 56
+            height: 40
             bg_color: 0x222244
             radius: 8
             on_press:
@@ -960,17 +1204,18 @@ lvgl:
                 - lvgl.page.show: main_page
             widgets:
               - label:
-                  text: "\U000F0141"
+                  text: "\U000F006A"
                   text_font: ash_icons_24
                   text_color: 0xCCCCFF
                   align: CENTER
 
-        # ── L1C1 : Mode Fraicheur ──
+        # Mode Fraicheur
         - obj:
-            x: 56
-            y: 48
-            width: 190
-            height: 120
+            align: TOP_LEFT
+            x: 12
+            y: 64
+            width: 130
+            height: 90
             styles: obj_styles
             widgets:
               - label:
@@ -982,22 +1227,24 @@ lvgl:
               - switch:
                   id: sw_lvgl_summer
                   x: 0
-                  y: 30
+                  y: 28
+
               - label:
                   id: label_summer_state
                   x: 0
-                  y: 80
-                  text: "OFF"
+                  y: 68
+                  text: "Hiver"
                   text_font: roboto_font_20
                   text_color: 0x8888AA
 
-        # ── L1C2 : Plein Air ──
+        # Cycle Plein Air
         - button:
             id: btn_lvgl_boost_air
-            x: 260
-            y: 48
-            width: 180
-            height: 120
+            align: TOP_MID
+            x: -10
+            y: 64
+            width: 140
+            height: 90
             bg_color: 0x0A2040
             radius: 10
             on_press:
@@ -1009,7 +1256,7 @@ lvgl:
                   text_font: ash_icons_24
                   text_color: 0x88CCFF
                   align: TOP_MID
-                  y: 8
+                  y: 6
               - label:
                   text: "Plein Air"
                   text_font: roboto_font_20
@@ -1021,15 +1268,16 @@ lvgl:
                   text_font: roboto_font_20
                   text_color: 0x8888AA
                   align: BOTTOM_MID
-                  y: -8
+                  y: -4
 
-        # ── L2C1 : Cheminee ──
+        # Cycle Cheminee
         - button:
             id: btn_lvgl_boost_fire
-            x: 56
-            y: 180
-            width: 190
-            height: 120
+            align: TOP_RIGHT
+            x: -12
+            y: 64
+            width: 140
+            height: 90
             bg_color: 0x301000
             radius: 10
             on_press:
@@ -1041,7 +1289,7 @@ lvgl:
                   text_font: ash_icons_24
                   text_color: 0xFFAA44
                   align: TOP_MID
-                  y: 8
+                  y: 6
               - label:
                   text: "Cheminee"
                   text_font: roboto_font_20
@@ -1053,45 +1301,15 @@ lvgl:
                   text_font: roboto_font_20
                   text_color: 0x8888AA
                   align: BOTTOM_MID
-                  y: -8
+                  y: -4
 
-        # ── L2C2 : Arreter cycle ──
-        - button:
-            id: btn_lvgl_stop_boost
-            x: 260
-            y: 180
-            width: 180
-            height: 120
-            bg_color: 0x400000
-            radius: 10
-            on_press:
-              then:
-                - button.press: btn_stop_boost
-            widgets:
-              - label:
-                  text: "\U000F04DB"
-                  text_font: ash_icons_24
-                  text_color: 0xFF4444
-                  align: TOP_MID
-                  y: 8
-              - label:
-                  text: "Arreter"
-                  text_font: roboto_font_20
-                  text_color: 0xFFFFFF
-                  align: CENTER
-              - label:
-                  text: "Cycle"
-                  text_font: roboto_font_20
-                  text_color: 0x8888AA
-                  align: BOTTOM_MID
-                  y: -8
-
-        # ── L3C1 : Filtres + sante ──
+        # Compteur filtres + sante
         - obj:
-            x: 56
-            y: 312
-            width: 190
-            height: 120
+            align: BOTTOM_LEFT
+            x: 12
+            y: -12
+            width: 230
+            height: 90
             styles: obj_styles
             widgets:
               - label:
@@ -1103,25 +1321,26 @@ lvgl:
               - label:
                   id: label_service_months
                   x: 0
-                  y: 30
+                  y: 28
                   text: "-- mois"
                   text_font: roboto_font_24
                   text_color: 0xFFFFFF
               - label:
                   id: label_health_state
                   x: 0
-                  y: 70
-                  text: "OK"
+                  y: 62
+                  text: "Optimal"
                   text_font: roboto_font_20
                   text_color: 0x44FF88
 
-        # ── L3C2 : Reset filtres ──
+        # Reset filtres
         - button:
             id: btn_lvgl_ack_maint
-            x: 260
-            y: 312
-            width: 180
-            height: 120
+            align: BOTTOM_RIGHT
+            x: -12
+            y: -12
+            width: 140
+            height: 90
             bg_color: 0x202000
             radius: 10
             on_press:
@@ -1133,7 +1352,7 @@ lvgl:
                   text_font: ash_icons_24
                   text_color: 0xFFCC44
                   align: TOP_MID
-                  y: 8
+                  y: 6
               - label:
                   text: "Reset"
                   text_font: roboto_font_20
@@ -1144,4 +1363,4 @@ lvgl:
                   text_font: roboto_font_20
                   text_color: 0x8888AA
                   align: BOTTOM_MID
-                  y: -8
+                  y: -4
