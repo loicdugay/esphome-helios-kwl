@@ -203,12 +203,18 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
     uint8_t m3[6] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD,     reg, value, 0}; m3[5] = checksum(m3, 5);
     write_array(m3, 6); write_byte(m3[5]);  // CRC double pour MAINBOARD
     flush();
-    delay(50);
-    // Verification
+    // Attendre que la VMC traite l'ecriture — 100ms au lieu de 50ms
+    // car la CM peut etre en train d'emettre un broadcast qu'il faut laisser finir
+    delay(100);
+    // Vider tout ce qui est arrive pendant le delay (broadcasts residuels)
+    while (available()) { uint8_t b; read_byte(&b); last_rx_time_ = millis(); }
+    rx_buffer_len_ = 0;
+    // Verification via poll actif propre
     auto v = read_register(reg);
     if (v.has_value() && *v == value) return true;
     ESP_LOGW(TAG, "Write 0x%02X = 0x%02X verif KO (lu=0x%02X) — retry %u",
              reg, value, v.has_value() ? *v : 0xFF, attempt);
+    delay(100);  // attendre avant retry
   }
   ESP_LOGE(TAG, "Write 0x%02X echec apres retry", reg);
   return false;
@@ -339,10 +345,19 @@ void HeliosKwlComponent::publish_humidity(uint8_t reg, uint8_t v) {
 void HeliosKwlComponent::publish_fan_speed(uint8_t v) {
   uint8_t speed = bitmask_to_speed(v);
   if (fan_speed_sensor_) fan_speed_sensor_->publish_state((float)speed);
+  // Synchroniser le fan entity — mais SEULEMENT si le bit power est ON.
+  // Quand la VMC est eteinte, 0x29 garde la derniere vitesse (ex: 2) mais
+  // on ne doit pas forcer fan_->state = true sinon ca bagote avec publish_states.
   if (fan_ && speed > 0) {
+    bool power_on = has_value_[REG_STATES] && ((last_value_[REG_STATES] >> BIT_POWER) & 1);
     fan_->speed = speed;
-    if (!fan_->state) fan_->state = true;
-    fan_->publish_state();
+    if (power_on && !fan_->state) {
+      fan_->state = true;
+      fan_->publish_state();
+    } else if (power_on) {
+      fan_->publish_state();  // speed a change, power deja ON
+    }
+    // Si power OFF, on met a jour speed silencieusement sans publier state=ON
   }
 }
 
