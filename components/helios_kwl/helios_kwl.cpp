@@ -1,6 +1,8 @@
 // helios_kwl.cpp — Reecriture propre
 // 4 primitives : read_register, write_register, write_bit, write_bits_masked
-// Pas de cache source de verite, pas de pending_writes, pas de desired
+// write_bit utilise last_value_ si disponible (valeur du dernier poll S2, comme la vraie telecommande).
+// write_register n'effectue pas de verification : la capture bus montre que la vraie telecommande
+// ecrit et passe immediatement au poll suivant sans re-lire le registre.
 
 #include "helios_kwl.h"
 #include "esphome/core/log.h"
@@ -191,33 +193,24 @@ optional<uint8_t> HeliosKwlComponent::read_register(uint8_t reg) {
 // ══ write_register ════════════════════════════════════════════════
 
 bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
-  for (uint8_t attempt = 0; attempt < 2; attempt++) {
-    wait_bus_silence();
-    while (available()) { uint8_t b; read_byte(&b); }
-    rx_buffer_len_ = 0;
-    // Sequence protocole Vallox : 3 messages
-    uint8_t m1[6] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_RC,  reg, value, 0}; m1[5] = checksum(m1, 5);
-    write_array(m1, 6); flush(); delay(3);
-    uint8_t m2[6] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_ALL, reg, value, 0}; m2[5] = checksum(m2, 5);
-    write_array(m2, 6); flush(); delay(3);
-    uint8_t m3[6] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD,     reg, value, 0}; m3[5] = checksum(m3, 5);
-    write_array(m3, 6); write_byte(m3[5]);  // CRC double pour MAINBOARD
-    flush();
-    // Attendre que la VMC traite l'ecriture — 100ms au lieu de 50ms
-    // car la CM peut etre en train d'emettre un broadcast qu'il faut laisser finir
-    delay(100);
-    // Vider tout ce qui est arrive pendant le delay (broadcasts residuels)
-    while (available()) { uint8_t b; read_byte(&b); last_rx_time_ = millis(); }
-    rx_buffer_len_ = 0;
-    // Verification via poll actif propre
-    auto v = read_register(reg);
-    if (v.has_value() && *v == value) return true;
-    ESP_LOGW(TAG, "Write 0x%02X = 0x%02X verif KO (lu=0x%02X) — retry %u",
-             reg, value, v.has_value() ? *v : 0xFF, attempt);
-    delay(100);  // attendre avant retry
-  }
-  ESP_LOGE(TAG, "Write 0x%02X echec apres retry", reg);
-  return false;
+  wait_bus_silence();
+  while (available()) { uint8_t b; read_byte(&b); }
+  rx_buffer_len_ = 0;
+  // Sequence protocole Vallox : 3 messages (identique a la vraie telecommande)
+  uint8_t m1[6] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_RC,  reg, value, 0}; m1[5] = checksum(m1, 5);
+  write_array(m1, 6); flush(); delay(3);
+  uint8_t m2[6] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_ALL, reg, value, 0}; m2[5] = checksum(m2, 5);
+  write_array(m2, 6); flush(); delay(3);
+  uint8_t m3[6] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD,     reg, value, 0}; m3[5] = checksum(m3, 5);
+  write_array(m3, 6); write_byte(m3[5]);  // CRC double pour MAINBOARD
+  flush();
+  // Court delai pour que la VMC traite la commande avant la prochaine operation bus.
+  // Pas de re-lecture de verification : la vraie telecommande ne le fait pas non plus
+  // (cf. capture bus). Le cycle S2 confirme naturellement l'etat.
+  delay(30);
+  while (available()) { uint8_t b; read_byte(&b); last_rx_time_ = millis(); }
+  rx_buffer_len_ = 0;
+  return true;
 }
 
 // ══ write_bit / write_bits_masked ═════════════════════════════════
