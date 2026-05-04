@@ -20,3 +20,12 @@ uv.lock
 # --- Système & Divers ---
 .DS_Store
 Thumbs.db
+
+# --- MCP (Model Context Protocol) ---
+.mcp.json
+.claude/settings.json
+.claude/settings.local.json
+
+# --- Graphify ---
+graphify-out/
+.graphify_python
