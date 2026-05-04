@@ -29,3 +29,7 @@ Thumbs.db
 # --- Graphify ---
 graphify-out/
 .graphify_python
+
+
+# --- Claude ---
+CLAUDE.md
