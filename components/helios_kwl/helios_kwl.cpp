@@ -167,26 +167,29 @@ void HeliosKwlComponent::wait_bus_silence() {
 // ══ read_register ═════════════════════════════════════════════════
 
 optional<uint8_t> HeliosKwlComponent::read_register(uint8_t reg) {
-  wait_bus_silence();
-  // Vide l'UART hardware des eventuelles trames bufferisees
-  while (available()) { uint8_t b; read_byte(&b); }
-  rx_buffer_len_ = 0;
-  uint8_t req[6] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
-  req[5] = checksum(req, 5);
-  write_array(req, 6);
-  flush();
-  // Lecture non-bloquante 50ms
-  uint8_t buf[6]; size_t got = 0;
-  uint32_t deadline = millis() + 50;
-  while (got < 6 && millis() < deadline) {
-    if (available()) { read_byte(&buf[got]); got++; last_rx_time_ = millis(); }
-    else yield();
+  // Protocole section 3.1 : max 3 tentatives si pas de reponse
+  for (int attempt = 0; attempt < 3; attempt++) {
+    wait_bus_silence();
+    while (available()) { uint8_t b; read_byte(&b); }
+    rx_buffer_len_ = 0;
+    uint8_t req[6] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
+    req[5] = checksum(req, 5);
+    write_array(req, 6);
+    flush();
+    uint8_t buf[6]; size_t got = 0;
+    uint32_t deadline = millis() + 50;
+    while (got < 6 && millis() < deadline) {
+      if (available()) { read_byte(&buf[got]); got++; last_rx_time_ = millis(); }
+      else yield();
+    }
+    if (got == 6 && verify_checksum(buf, 6) && buf[1] == HELIOS_MAINBOARD && buf[2] == address_ && buf[3] == reg) {
+      last_value_[reg] = buf[4];
+      has_value_[reg] = true;
+      return buf[4];
+    }
+    if (attempt < 2) delay(5);
   }
-  if (got == 6 && verify_checksum(buf, 6) && buf[1] == HELIOS_MAINBOARD && buf[2] == address_ && buf[3] == reg) {
-    last_value_[reg] = buf[4];
-    has_value_[reg] = true;
-    return buf[4];
-  }
+  ESP_LOGW(TAG, "read_register 0x%02X : pas de reponse apres 3 tentatives", reg);
   return {};
 }
 
@@ -210,25 +213,29 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   delay(30);
   while (available()) { uint8_t b; read_byte(&b); last_rx_time_ = millis(); }
   rx_buffer_len_ = 0;
+  // Mise a jour optimiste : last_value_ reflète ce qu'on vient d'écrire.
+  // Le S2 confirme l'état réel dans les 6s suivantes.
+  last_value_[reg] = value;
+  has_value_[reg]  = true;
   return true;
 }
 
 // ══ write_bit / write_bits_masked ═════════════════════════════════
 
-bool HeliosKwlComponent::write_bit(uint8_t reg, uint8_t bit, bool state) {
-  auto cur = read_register(reg);
-  if (!cur.has_value()) { ESP_LOGW(TAG, "write_bit: read 0x%02X echec", reg); return false; }
-  uint8_t nv = state ? (*cur | (1u << bit)) : (*cur & ~(1u << bit));
-  if (nv == *cur) return true;
+// Target: Register | Modifie N bits via masque — source = last_value_ (VMC, max 6s)
+bool HeliosKwlComponent::write_bits_masked(uint8_t reg, uint8_t mask, uint8_t value) {
+  if (!has_value_[reg]) {
+    ESP_LOGW(TAG, "write 0x%02X ignore — pas encore lu par S2/S3", reg);
+    return false;
+  }
+  uint8_t nv = (last_value_[reg] & ~mask) | (value & mask);
+  if (nv == last_value_[reg]) return true;
   return write_register(reg, nv);
 }
 
-bool HeliosKwlComponent::write_bits_masked(uint8_t reg, uint8_t mask, uint8_t value) {
-  auto cur = read_register(reg);
-  if (!cur.has_value()) { ESP_LOGW(TAG, "write_bits_masked: read 0x%02X echec", reg); return false; }
-  uint8_t nv = (*cur & ~mask) | (value & mask);
-  if (nv == *cur) return true;
-  return write_register(reg, nv);
+// Target: Register | Wrapper 1 bit — delègue à write_bits_masked
+bool HeliosKwlComponent::write_bit(uint8_t reg, uint8_t bit, bool state) {
+  return write_bits_masked(reg, 1u << bit, state ? (1u << bit) : 0u);
 }
 
 // ══ update — polling rotatif S2/S3 5:1 ═══════════════════════════
