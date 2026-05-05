@@ -477,18 +477,33 @@ std::pair<uint8_t,uint8_t> HeliosKwlComponent::co2_to_bytes(uint16_t p) {
 // ══ Actions ═══════════════════════════════════════════════════════
 
 void HeliosKwlComponent::control_fan(bool on, optional<uint8_t> spd) {
+  ESP_LOGI(TAG, "[HA] Ventilation -> %s%s", on ? "ON" : "OFF",
+           spd.has_value() ? (" vitesse " + std::to_string(*spd)).c_str() : "");
   write_bit(REG_STATES, BIT_POWER, on);
   if (spd.has_value() && *spd >= 1 && *spd <= 8) write_register(REG_FAN_SPEED, speed_to_bitmask(*spd));
 }
 void HeliosKwlComponent::set_fan_speed(uint8_t s) {
+  ESP_LOGI(TAG, "[HA] Vitesse -> %d", s);
   if (s == 0) write_bit(REG_STATES, BIT_POWER, false);
   else write_register(REG_FAN_SPEED, speed_to_bitmask(s));
 }
-void HeliosKwlComponent::set_fan_on(bool on) { write_bit(REG_STATES, BIT_POWER, on); }
+void HeliosKwlComponent::set_fan_on(bool on) {
+  ESP_LOGI(TAG, "[HA] Alimentation -> %s", on ? "ON" : "OFF");
+  write_bit(REG_STATES, BIT_POWER, on);
+}
 
-void HeliosKwlComponent::control_co2_regulation(bool e)      { write_bit(REG_STATES, BIT_CO2_REG, e); }
-void HeliosKwlComponent::control_humidity_regulation(bool e) { write_bit(REG_STATES, BIT_HUMIDITY_REG, e); }
-void HeliosKwlComponent::control_summer_mode(bool e)         { write_bit(REG_STATES, BIT_SUMMER_MODE, e); }
+void HeliosKwlComponent::control_co2_regulation(bool e) {
+  ESP_LOGI(TAG, "[HA] Regulation CO2 -> %s", e ? "ON" : "OFF");
+  write_bit(REG_STATES, BIT_CO2_REG, e);
+}
+void HeliosKwlComponent::control_humidity_regulation(bool e) {
+  ESP_LOGI(TAG, "[HA] Regulation HR -> %s", e ? "ON" : "OFF");
+  write_bit(REG_STATES, BIT_HUMIDITY_REG, e);
+}
+void HeliosKwlComponent::control_summer_mode(bool e) {
+  ESP_LOGI(TAG, "[HA] Mode ete -> %s", e ? "ON" : "OFF");
+  write_bit(REG_STATES, BIT_SUMMER_MODE, e);
+}
 
 void HeliosKwlComponent::control_basic_fan_speed(uint8_t s)   { write_register(REG_BASIC_SPEED, speed_to_bitmask(s)); }
 void HeliosKwlComponent::control_max_fan_speed(uint8_t s)     { write_register(REG_MAX_SPEED, speed_to_bitmask(s)); }
