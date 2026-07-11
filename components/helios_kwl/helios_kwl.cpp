@@ -103,12 +103,24 @@ void HeliosKwlComponent::setup() {
   if (max_speed_cont_sel_)
     s3_tasks_[s3_count_++] = {REG_PROGRAM2, POLL_INTERVAL_S3, 0};
 
+  // Filet de securite temperatures : diffusees toutes les 12 s par le maitre,
+  // mais le broadcast s'arrete VMC eteinte (elle repond toujours aux READ,
+  // Annexe B). Un poll lent garantit des valeurs fraiches dans tous les cas.
+  if (temperature_outside_)
+    s3_tasks_[s3_count_++] = {REG_TEMP_OUTSIDE, POLL_INTERVAL_TEMP_FALLBACK, 0};
+  if (temperature_exhaust_)
+    s3_tasks_[s3_count_++] = {REG_TEMP_EXHAUST, POLL_INTERVAL_TEMP_FALLBACK, 0};
+  if (temperature_extract_)
+    s3_tasks_[s3_count_++] = {REG_TEMP_EXTRACT, POLL_INTERVAL_TEMP_FALLBACK, 0};
+  if (temperature_supply_)
+    s3_tasks_[s3_count_++] = {REG_TEMP_SUPPLY, POLL_INTERVAL_TEMP_FALLBACK, 0};
+
   // Force tous S3 "dus" au boot
   uint32_t bt = millis();
   for (size_t i = 0; i < s3_count_; i++) s3_tasks_[i].last_polled = bt - POLL_INTERVAL_S3 - 1;
 
   last_rx_time_ = bt;
-  ESP_LOGI(TAG, "S2: %u regs @6s | S3: %u regs @1h | ratio 5:1", s2_count_, s3_count_);
+  ESP_LOGI(TAG, "S2: %u regs @6s | S3: %u regs (1h / temp 60s) | ratio 5:1", s2_count_, s3_count_);
 }
 
 // ══ loop + dispatch ═══════════════════════════════════════════════
@@ -164,6 +176,12 @@ void HeliosKwlComponent::dispatch_packet(uint8_t src, uint8_t dst, uint8_t reg, 
   if (dst != HELIOS_BROADCAST_RC && dst != address_) return;
   last_value_[reg] = val;
   has_value_[reg] = true;
+  // Reponse a une lecture en cours : signaler et laisser read_register
+  // publier (evite un double comptage dans les filtres de capteurs).
+  if (src == HELIOS_MAINBOARD && dst == address_ && pending_read_reg_ == (int16_t) reg) {
+    pending_read_valid_ = true;
+    return;
+  }
   publish_register(reg, val);
 }
 
@@ -188,28 +206,31 @@ void HeliosKwlComponent::wait_bus_silence() {
 // ══ read_register ═════════════════════════════════════════════════
 
 optional<uint8_t> HeliosKwlComponent::read_register(uint8_t reg) {
-  // Protocole section 3.1 : max 3 tentatives si pas de reponse
+  // Protocole section 3.1 : max 3 tentatives si pas de reponse.
+  // La reponse est extraite du flux par le parseur de paquets standard :
+  // un broadcast 12 s qui s'intercale entre la requete et la reponse est
+  // dispatche normalement au lieu de faire echouer la lecture.
   for (int attempt = 0; attempt < 3; attempt++) {
     wait_bus_silence();
-    while (available()) { uint8_t b; read_byte(&b); }
-    rx_buffer_len_ = 0;
+    loop_read_bus();  // traite ce qui s'est accumule pendant l'attente de silence
     uint8_t req[6] = {HELIOS_START_BYTE, address_, HELIOS_MAINBOARD, 0x00, reg, 0};
     req[5] = checksum(req, 5);
+    pending_read_reg_ = reg;
+    pending_read_valid_ = false;
     write_array(req, 6);
     flush();
-    uint8_t buf[6]; size_t got = 0;
     const uint32_t start = millis();
-    while (got < 6 && (millis() - start) < 50) {
-      if (available()) { read_byte(&buf[got]); got++; last_rx_time_ = millis(); }
-      else yield();
-    }
-    if (got == 6 && verify_checksum(buf, 6) && buf[1] == HELIOS_MAINBOARD && buf[2] == address_ && buf[3] == reg) {
-      last_value_[reg] = buf[4];
-      has_value_[reg] = true;
-      return buf[4];
+    while ((millis() - start) < 50) {
+      loop_read_bus();
+      if (pending_read_valid_) {
+        pending_read_reg_ = -1;
+        return last_value_[reg];
+      }
+      yield();
     }
     if (attempt < 2) delay(5);
   }
+  pending_read_reg_ = -1;
   ESP_LOGW(TAG, "read_register 0x%02X : pas de reponse apres 3 tentatives", reg);
   return {};
 }
@@ -250,7 +271,19 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   rx_buffer_len_ = 0;
   last_value_[reg] = value;
   has_value_[reg]  = true;
+  // Verification : forcer la relecture du registre au prochain update()
+  // (≤1 s) pour publier la valeur reellement prise en compte par la VMC.
+  schedule_verify(reg);
   return true;
+}
+
+// Marque la tache de poll du registre comme "due" immediatement.
+void HeliosKwlComponent::schedule_verify(uint8_t reg) {
+  const uint32_t now = millis();
+  for (size_t i = 0; i < s2_count_; i++)
+    if (s2_tasks_[i].reg == reg) { s2_tasks_[i].last_polled = now - s2_tasks_[i].interval_ms; return; }
+  for (size_t i = 0; i < s3_count_; i++)
+    if (s3_tasks_[i].reg == reg) { s3_tasks_[i].last_polled = now - s3_tasks_[i].interval_ms; return; }
 }
 
 // ══ write_bit / write_bits_masked ═════════════════════════════════
@@ -296,8 +329,13 @@ bool HeliosKwlComponent::do_one_s3_poll() {
     PollTask &t = s3_tasks_[idx];
     if ((now - t.last_polled) < t.interval_ms) continue;
     auto r = read_register(t.reg);
-    t.last_polled = now;
-    if (r.has_value()) publish_register(t.reg, *r);
+    if (r.has_value()) {
+      t.last_polled = now;
+      publish_register(t.reg, *r);
+    } else {
+      // Echec : re-tenter dans POLL_RETRY_MS au lieu d'attendre l'intervalle complet
+      t.last_polled = now - t.interval_ms + POLL_RETRY_MS;
+    }
     s3_index_ = (idx + 1) % s3_count_;
     return true;
   }
@@ -317,7 +355,7 @@ void HeliosKwlComponent::update() {
 void HeliosKwlComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Helios KWL EC 300 Pro — Reecrit");
   ESP_LOGCONFIG(TAG, "  Adresse : 0x%02X", address_);
-  ESP_LOGCONFIG(TAG, "  S2: %u regs @6s | S3: %u regs @1h", s2_count_, s3_count_);
+  ESP_LOGCONFIG(TAG, "  S2: %u regs @6s | S3: %u regs (1h / temp 60s)", s2_count_, s3_count_);
 }
 
 // ══ Publications ═════════════════════════════════════════════════

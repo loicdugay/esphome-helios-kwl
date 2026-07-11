@@ -53,6 +53,11 @@ static constexpr uint8_t BIT_MAX_SPEED_CONT = 0;
 static constexpr size_t RX_BUFFER_SIZE = 512;
 static constexpr uint32_t POLL_INTERVAL_S2 = 6000;
 static constexpr uint32_t POLL_INTERVAL_S3 = 3600000;
+// Filet de securite temperatures : normalement diffusees toutes les 12 s
+// par le maitre, mais le broadcast s'arrete quand la VMC est eteinte.
+static constexpr uint32_t POLL_INTERVAL_TEMP_FALLBACK = 60000;
+// Re-tentative rapide d'un poll S3 en echec (au lieu d'attendre 1 h).
+static constexpr uint32_t POLL_RETRY_MS = 30000;
 static constexpr uint8_t  S2_TURNS_BEFORE_S3 = 5;
 static constexpr uint32_t BUS_SILENCE_MS = 10;
 
@@ -177,6 +182,12 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   bool boost_cycle_active_{false};
   uint8_t last_health_{0xFF};
 
+  // Lecture en attente : registre demande par read_register (-1 = aucune).
+  // Permet a dispatch_packet de reconnaitre la reponse au milieu du flux,
+  // meme si des broadcasts s'intercalent.
+  int16_t pending_read_reg_{-1};
+  bool pending_read_valid_{false};
+
   HeliosKwlFan *fan_{nullptr};
 
   sensor::Sensor *temperature_outside_{nullptr}, *temperature_extract_{nullptr};
@@ -208,6 +219,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void wait_bus_silence();
   bool do_one_s2_poll();
   bool do_one_s3_poll();
+  void schedule_verify(uint8_t reg);
 
   void publish_register(uint8_t reg, uint8_t value);
   void publish_temperature(uint8_t reg, uint8_t value);
