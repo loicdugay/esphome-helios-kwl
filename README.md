@@ -235,9 +235,9 @@ ota_password: "votre-mot-de-passe-ota"
 ap_password: "motdepasse-fallback"
 ```
 
-Et placez les polices dans un dossier `fonts/` :
-- [RobotoCondensed-Regular.ttf](https://fonts.google.com/specimen/Roboto+Condensed)
-- [materialdesignicons-webfont.ttf](https://github.com/Templarian/MaterialDesign-Webfont/blob/master/fonts/materialdesignicons-webfont.ttf)
+Les polices sont téléchargées automatiquement à la compilation depuis leurs sources officielles open source (aucun fichier local à installer) :
+- Roboto Condensed via [Google Fonts](https://fonts.google.com/specimen/Roboto+Condensed) (`gfonts://`)
+- [Material Design Icons](https://github.com/Templarian/MaterialDesign-Webfont) via le dépôt officiel Templarian
 
 ---
 
@@ -306,10 +306,11 @@ components/
 │   ├── button/__init__.py + .h     # 4 buttons (cycles, maintenance)
 │   ├── text_sensor/__init__.py     # 3 text_sensors
 │   └── fan/__init__.py             # Fan natif 8 vitesses
-└── cst3240/                        # Composant tactile T-Panel S3
-    ├── __init__.py
-    └── touchscreen/__init__.py + .cpp + .h
 ```
+
+> Le tactile CST3240 du T-Panel S3 est géré par le composant natif ESPHome
+> [`cst226`](https://esphome.io/components/touchscreen/cst226/) (même protocole
+> Hynitron) — plus aucun driver externe n'est nécessaire pour l'écran.
 
 ---
 
@@ -317,7 +318,7 @@ components/
 
 | Symptôme | Solution |
 |----------|----------|
-| Compilation échoue « IRAM overflow » | Ajouter les flags `platformio_options` (voir ci-dessous) |
+| Compilation échoue « IRAM overflow » | Ajouter les `sdkconfig_options` (voir ci-dessous) |
 | Aucune réponse de la VMC | Vérifier câblage A/B (inverser) · activer `uart: debug:` |
 | Températures incohérentes | Sonde VMC défectueuse — vérifier registre 0x36 |
 | Écriture `verif KO` dans les logs | Normal occasionnellement (collision bus). Si systématique, vérifier le câblage. |
@@ -325,13 +326,23 @@ components/
 | Bouton cycle nécessite 2 appuis | Le cycle précédent n'est peut-être pas terminé. Appuyer d'abord sur "Arrêter le cycle". |
 
 **Libérer de l'IRAM sur ESP32-S3 :**
+
+Les options Kconfig d'ESP-IDF doivent passer par `sdkconfig_options` — des
+`-DCONFIG_*` dans `platformio_options` sont silencieusement ignorés.
+À noter : le rapport mémoire affiche toujours « IRAM 100 % », c'est normal —
+l'éditeur de liens remplit d'abord le segment IRAM dédié de 16 Ko puis
+déborde en DIRAM ; la vraie marge se lit sur la ligne DIRAM.
+
 ```yaml
-esphome:
-  platformio_options:
-    board_build.extra_flags:
-      - "-DCONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=1"
-      - "-DCONFIG_LWIP_IRAM_OPTIMIZATION=0"
-      - "-DCONFIG_SPI_MASTER_IN_IRAM=0"
+esp32:
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH: "y"
+      CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH: "y"
+      CONFIG_ESP_WIFI_IRAM_OPT: "n"
+      CONFIG_ESP_WIFI_RX_IRAM_OPT: "n"
+      CONFIG_LWIP_IRAM_OPTIMIZATION: "n"
 ```
 
 ---
@@ -340,7 +351,6 @@ esphome:
 
 - **Cyril Jaquier** ([lostcontrol](https://github.com/lostcontrol/esphome-helios-kwl)) — auteur original, KWL EC 500 R
 - **loicdugay** — fork T-Panel S3, support complet lecture/écriture 40+ registres, cycles boost/cheminée, interface LVGL
-- **Abeer Ash** ([ash-abeer](https://github.com/ash-abeer)) — Développement de l'adaptation du code original au matériel T-Panel, réalisée sur commande et sous le financement de **loicdugay**.
 - **Protocole DIGIT** — documentation Vallox / Petteri Kähärä (2011), traduction anglaise (2021)
 
 ## Licence

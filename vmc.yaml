@@ -125,7 +125,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/loicdugay/esphome-helios-kwl/
-    components: [helios_kwl, cst3240]
+    components: [helios_kwl]
     refresh: 1d
 
 # ─── I2C + expandeur ──────────────────────────────────────────
@@ -140,12 +140,13 @@ i2c:
 xl9535:
   id: expander
 
-# ─── Tactile CST3240 ──────────────────────────────────────────
+# ─── Tactile CST3240 (via le driver natif cst226, meme protocole Hynitron) ──
 
 touchscreen:
-  - platform: cst3240
+  - platform: cst226
     i2c_id: tp_i2c
     id: my_touchscreen
+    address: 0x5A
     interrupt_pin: 21
     reset_pin:
       xl9535:

@@ -456,7 +456,8 @@ void HeliosKwlComponent::publish_io_port(uint8_t v) {
   if (exhaust_fan_running_) exhaust_fan_running_->publish_state(!((v >> BIT_EXHAUST_FAN) & 1));
   if (preheating_active_)   preheating_active_->publish_state((v >> BIT_PREHEATING) & 1);
   if (external_contact_)    external_contact_->publish_state((v >> BIT_EXT_CONTACT) & 1);
-  if (fault_relay_)         fault_relay_->publish_state(!((v >> BIT_FAULT_RELAY) & 1));
+  // 08H bit 2 : 0 = relais ouvert, 1 = ferme (le relais se ferme sur defaut)
+  if (fault_relay_)         fault_relay_->publish_state((v >> BIT_FAULT_RELAY) & 1);
 }
 
 void HeliosKwlComponent::publish_alarms(uint8_t v) {
