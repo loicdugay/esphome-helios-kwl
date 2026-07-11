@@ -188,6 +188,11 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   int16_t pending_read_reg_{-1};
   bool pending_read_valid_{false};
 
+  // Verification d'ecriture : derniere valeur ecrite, comparee a la
+  // relecture forcee par schedule_verify (suit la derniere ecriture).
+  int16_t verify_reg_{-1};
+  uint8_t verify_expected_{0};
+
   HeliosKwlFan *fan_{nullptr};
 
   sensor::Sensor *temperature_outside_{nullptr}, *temperature_extract_{nullptr};
@@ -220,6 +225,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   bool do_one_s2_poll();
   bool do_one_s3_poll();
   void schedule_verify(uint8_t reg);
+  void check_verify_(uint8_t reg, uint8_t value);
 
   void publish_register(uint8_t reg, uint8_t value);
   void publish_temperature(uint8_t reg, uint8_t value);

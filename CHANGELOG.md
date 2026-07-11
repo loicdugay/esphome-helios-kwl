@@ -21,7 +21,9 @@ Toutes les modifications notables de ce fork sont documentées ici.
 - **Tactile** : migration vers le composant natif ESPHome `cst226` (même protocole Hynitron que le CST3240) — suppression du composant externe `cst3240`
 - **Polices** : téléchargées à la compilation depuis les sources officielles open source (Google Fonts, dépôt Templarian MDI) — plus de fichiers locaux ; police 84 px limitée aux chiffres
 - **Entités CO₂ retirées du YAML** (aucun capteur installé sur cette VMC)
-- **Dépendances** : suppression de `captive_portal`, `external_components` restreint à `helios_kwl` avec `refresh: 1d`, buffer LVGL 25 %, logger en niveau INFO
+- **Dépendances** : suppression de `captive_portal`, `external_components` restreint à `helios_kwl` avec `refresh: 1d`, logger en niveau INFO
+- **Vérification d'écriture visible** : après chaque écriture, la relecture est comparée et journalisée — `[verif] 0x.. : ecriture confirmee par la CM` ou avertissement si la CM renvoie une autre valeur
+- **Tactile/LVGL** : polling 32 ms conservé (sans `interrupt_pin`, qui coupe le polling et dégrade le suivi de glissement) et buffer LVGL plein écran pour la fluidité
 
 ## [Unreleased] — Corrections et améliorations
 

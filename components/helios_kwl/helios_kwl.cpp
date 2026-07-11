@@ -7,6 +7,7 @@
 #include "helios_kwl.h"
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
+#include <cmath>
 
 namespace esphome {
 namespace helios_kwl {
@@ -271,10 +272,25 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   rx_buffer_len_ = 0;
   last_value_[reg] = value;
   has_value_[reg]  = true;
-  // Verification : forcer la relecture du registre au prochain update()
-  // (≤1 s) pour publier la valeur reellement prise en compte par la VMC.
+  // Verification : forcer la relecture du registre a un prochain update()
+  // pour publier la valeur reellement prise en compte par la VMC.
+  verify_reg_ = reg;
+  verify_expected_ = value;
   schedule_verify(reg);
   return true;
+}
+
+// Compare la relecture d'un registre avec la derniere valeur ecrite.
+void HeliosKwlComponent::check_verify_(uint8_t reg, uint8_t value) {
+  if (verify_reg_ != (int16_t) reg) return;
+  verify_reg_ = -1;
+  if (value == verify_expected_) {
+    ESP_LOGI(TAG, "[verif] 0x%02X : ecriture confirmee par la CM (0x%02X)", reg, value);
+  } else {
+    // Sur les registres volatils (0x29, 0xA3, 0x71, 0x79) la CM a pu
+    // legitimement changer la valeur entre-temps.
+    ESP_LOGW(TAG, "[verif] 0x%02X : ecrit 0x%02X mais la CM renvoie 0x%02X", reg, verify_expected_, value);
+  }
 }
 
 // Marque la tache de poll du registre comme "due" immediatement.
@@ -315,7 +331,10 @@ bool HeliosKwlComponent::do_one_s2_poll() {
     if (t.reg == REG_BOOST_REMAINING && !boost_cycle_active_) { t.last_polled = now; continue; }
     auto r = read_register(t.reg);
     t.last_polled = now;
-    if (r.has_value()) publish_register(t.reg, *r);
+    if (r.has_value()) {
+      check_verify_(t.reg, *r);
+      publish_register(t.reg, *r);
+    }
     s2_index_ = (idx + 1) % s2_count_;
     return true;
   }
@@ -331,6 +350,7 @@ bool HeliosKwlComponent::do_one_s3_poll() {
     auto r = read_register(t.reg);
     if (r.has_value()) {
       t.last_polled = now;
+      check_verify_(t.reg, *r);
       publish_register(t.reg, *r);
     } else {
       // Echec : re-tenter dans POLL_RETRY_MS au lieu d'attendre l'intervalle complet
@@ -392,7 +412,9 @@ void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
       if (has_value_[REG_CO2_SETPOINT_H] && has_value_[REG_CO2_SETPOINT_L] && co2_setpoint_n_)
         co2_setpoint_n_->publish_state((float)bytes_to_co2(last_value_[REG_CO2_SETPOINT_H], last_value_[REG_CO2_SETPOINT_L]));
       break;
-    case REG_HUMIDITY_SET: if (humidity_setpoint_n_) humidity_setpoint_n_->publish_state(raw_to_humidity(value)); break;
+    // Arrondi au % entier : la quantification brute (pas de 0.49 %) affichait
+    // des valeurs du type 43.14 dans HA apres relecture.
+    case REG_HUMIDITY_SET: if (humidity_setpoint_n_) humidity_setpoint_n_->publish_state(roundf(raw_to_humidity(value))); break;
     case REG_SERVICE_INTERVAL: if (service_interval_n_) service_interval_n_->publish_state((float)value); break;
     case REG_PROGRAM2:
       if (max_speed_cont_sel_) max_speed_cont_sel_->publish_state((value >> BIT_MAX_SPEED_CONT) & 1 ? "Ventilation maximale forcee" : "Normal");

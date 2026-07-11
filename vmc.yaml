@@ -142,12 +142,15 @@ xl9535:
 
 # ─── Tactile CST3240 (via le driver natif cst226, meme protocole Hynitron) ──
 
+# Polling pur a 32 ms (PAS d'interrupt_pin) : avec une interruption declaree,
+# ESPHome coupe le polling et le suivi de glissement depend des impulsions
+# INT du CST3240, ce qui rend l'arc moins fluide au toucher.
 touchscreen:
   - platform: cst226
     i2c_id: tp_i2c
     id: my_touchscreen
     address: 0x5A
-    interrupt_pin: 21
+    update_interval: 32ms
     reset_pin:
       xl9535:
       number: 4
@@ -626,9 +629,9 @@ time:
 # ═══════════════════════════════════════════════════════════════
 
 lvgl:
-  # Buffer de dessin partiel : suffisant pour cette UI, ~340 Ko de PSRAM
-  # economises par rapport au buffer plein ecran par defaut
-  buffer_size: 25%
+  # Buffer plein ecran : rendu en une passe, indispensable pour la fluidite
+  # des animations (la PSRAM de 8 Mo est largement suffisante)
+  buffer_size: 100%
   style_definitions:
     - id: obj_styles
       bg_opa: TRANSP
