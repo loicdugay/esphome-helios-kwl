@@ -51,38 +51,57 @@ void HeliosKwlComponent::setup() {
   ESP_LOGI(TAG, "Init Helios KWL — adresse 0x%02X", address_);
   for (auto &h : has_value_) h = false;
 
+  // Les tables de polling sont construites en fonction des entites
+  // configurees dans le YAML : aucun trafic bus pour un registre
+  // dont personne ne consomme la valeur.
   s2_count_ = 0;
-  s2_tasks_[s2_count_++] = {REG_FAN_SPEED,      POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_STATES,          POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_IO_PORT,         POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_BOOST_STATE,     POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_BOOST_REMAINING, POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_ALARMS,          POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_HUMIDITY1,       POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_HUMIDITY2,       POLL_INTERVAL_S2, 0};
+  s2_tasks_[s2_count_++] = {REG_FAN_SPEED, POLL_INTERVAL_S2, 0};   // fan + vitesse
+  s2_tasks_[s2_count_++] = {REG_STATES,    POLL_INTERVAL_S2, 0};   // power/modes/sante
+  if (bypass_open_ || supply_fan_running_ || exhaust_fan_running_ || preheating_active_ ||
+      external_contact_ || fault_relay_)
+    s2_tasks_[s2_count_++] = {REG_IO_PORT, POLL_INTERVAL_S2, 0};
+  s2_tasks_[s2_count_++] = {REG_BOOST_STATE, POLL_INTERVAL_S2, 0};  // requis par les boutons cycle
+  if (boost_remaining_)
+    s2_tasks_[s2_count_++] = {REG_BOOST_REMAINING, POLL_INTERVAL_S2, 0};
+  if (co2_alarm_ || freeze_alarm_ || fault_indicator_sensor_)
+    s2_tasks_[s2_count_++] = {REG_ALARMS, POLL_INTERVAL_S2, 0};
+  if (humidity_sensor1_)
+    s2_tasks_[s2_count_++] = {REG_HUMIDITY1, POLL_INTERVAL_S2, 0};
+  if (humidity_sensor2_)
+    s2_tasks_[s2_count_++] = {REG_HUMIDITY2, POLL_INTERVAL_S2, 0};
 
   s3_count_ = 0;
-  s3_tasks_[s3_count_++] = {REG_CO2_SENSORS,     POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_FAULT_CODE,      POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_POST_HEAT_ON,    POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_POST_HEAT_OFF,   POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_FLAGS_SYSTEM,    POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_FLAGS_MODE,      POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_SERVICE_MONTHS,  POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_PROGRAM_VARS,    POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_BASIC_SPEED,     POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_MAX_SPEED,       POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_BYPASS_TEMP,     POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_DEFROST_TEMP,    POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_FROST_ALARM_TEMP,POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_FROST_HYSTERESIS,POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_SUPPLY_FAN_PCT,  POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_EXHAUST_FAN_PCT, POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_CO2_SETPOINT_H,  POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_CO2_SETPOINT_L,  POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_HUMIDITY_SET,     POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_SERVICE_INTERVAL, POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_PROGRAM2,         POLL_INTERVAL_S3, 0};
+  if (fault_code_ || fault_description_ || fault_indicator_sensor_)
+    s3_tasks_[s3_count_++] = {REG_FAULT_CODE, POLL_INTERVAL_S3, 0};
+  if (service_months_)
+    s3_tasks_[s3_count_++] = {REG_SERVICE_MONTHS, POLL_INTERVAL_S3, 0};
+  s3_tasks_[s3_count_++] = {REG_PROGRAM_VARS, POLL_INTERVAL_S3, 0};  // requis par cycles + selects
+  if (basic_fan_speed_n_)
+    s3_tasks_[s3_count_++] = {REG_BASIC_SPEED, POLL_INTERVAL_S3, 0};
+  if (max_fan_speed_n_)
+    s3_tasks_[s3_count_++] = {REG_MAX_SPEED, POLL_INTERVAL_S3, 0};
+  if (bypass_temp_n_)
+    s3_tasks_[s3_count_++] = {REG_BYPASS_TEMP, POLL_INTERVAL_S3, 0};
+  if (preheating_temp_n_)
+    s3_tasks_[s3_count_++] = {REG_DEFROST_TEMP, POLL_INTERVAL_S3, 0};
+  if (frost_alarm_temp_n_)
+    s3_tasks_[s3_count_++] = {REG_FROST_ALARM_TEMP, POLL_INTERVAL_S3, 0};
+  if (frost_hysteresis_n_)
+    s3_tasks_[s3_count_++] = {REG_FROST_HYSTERESIS, POLL_INTERVAL_S3, 0};
+  if (supply_fan_pct_n_)
+    s3_tasks_[s3_count_++] = {REG_SUPPLY_FAN_PCT, POLL_INTERVAL_S3, 0};
+  if (exhaust_fan_pct_n_)
+    s3_tasks_[s3_count_++] = {REG_EXHAUST_FAN_PCT, POLL_INTERVAL_S3, 0};
+  if (co2_setpoint_n_) {
+    s3_tasks_[s3_count_++] = {REG_CO2_SETPOINT_H, POLL_INTERVAL_S3, 0};
+    s3_tasks_[s3_count_++] = {REG_CO2_SETPOINT_L, POLL_INTERVAL_S3, 0};
+  }
+  if (humidity_setpoint_n_)
+    s3_tasks_[s3_count_++] = {REG_HUMIDITY_SET, POLL_INTERVAL_S3, 0};
+  if (service_interval_n_)
+    s3_tasks_[s3_count_++] = {REG_SERVICE_INTERVAL, POLL_INTERVAL_S3, 0};
+  if (max_speed_cont_sel_)
+    s3_tasks_[s3_count_++] = {REG_PROGRAM2, POLL_INTERVAL_S3, 0};
 
   // Force tous S3 "dus" au boot
   uint32_t bt = millis();
@@ -151,8 +170,10 @@ void HeliosKwlComponent::dispatch_packet(uint8_t src, uint8_t dst, uint8_t reg, 
 // ══ Silence bus ═══════════════════════════════════════════════════
 
 void HeliosKwlComponent::wait_bus_silence() {
-  uint32_t deadline = millis() + 200;  // garde-fou
-  while (millis() < deadline) {
+  // Garde-fou 100 ms : borne le blocage de loop() meme si le bus est bavard.
+  // Arithmetique par soustraction : insensible au rollover de millis() (~49 j).
+  const uint32_t start = millis();
+  while ((millis() - start) < 100) {
     // Consomme tout ce qui arrive entre temps
     while (available()) {
       uint8_t b; read_byte(&b);
@@ -177,8 +198,8 @@ optional<uint8_t> HeliosKwlComponent::read_register(uint8_t reg) {
     write_array(req, 6);
     flush();
     uint8_t buf[6]; size_t got = 0;
-    uint32_t deadline = millis() + 50;
-    while (got < 6 && millis() < deadline) {
+    const uint32_t start = millis();
+    while (got < 6 && (millis() - start) < 50) {
       if (available()) { read_byte(&buf[got]); got++; last_rx_time_ = millis(); }
       else yield();
     }
@@ -305,9 +326,11 @@ void HeliosKwlComponent::publish_register(uint8_t reg, uint8_t value) {
   switch (reg) {
     case REG_TEMP_OUTSIDE: case REG_TEMP_EXTRACT: case REG_TEMP_SUPPLY: case REG_TEMP_EXHAUST:
       publish_temperature(reg, value); break;
-    case REG_CO2_HIGH: case REG_CO2_LOW:
-      if (has_value_[REG_CO2_HIGH] && has_value_[REG_CO2_LOW])
-        publish_co2(last_value_[REG_CO2_HIGH], last_value_[REG_CO2_LOW]);
+    case REG_CO2_LOW:
+      // Publication uniquement a la reception de l'octet bas : le maitre envoie
+      // toujours H puis L, ce qui evite de melanger deux cycles de broadcast.
+      if (has_value_[REG_CO2_HIGH])
+        publish_co2(last_value_[REG_CO2_HIGH], value);
       break;
     case REG_HUMIDITY1: case REG_HUMIDITY2: publish_humidity(reg, value); break;
     case REG_FAN_SPEED: publish_fan_speed(value); break;

@@ -29,9 +29,7 @@ static constexpr uint8_t REG_TEMP_EXTRACT = 0x34, REG_TEMP_SUPPLY = 0x35;
 static constexpr uint8_t REG_FAN_SPEED = 0x29, REG_HUMIDITY1 = 0x2F, REG_HUMIDITY2 = 0x30;
 static constexpr uint8_t REG_STATES = 0xA3, REG_IO_PORT = 0x08, REG_ALARMS = 0x6D;
 static constexpr uint8_t REG_BOOST_STATE = 0x71, REG_BOOST_REMAINING = 0x79;
-static constexpr uint8_t REG_CO2_SENSORS = 0x2D, REG_FAULT_CODE = 0x36;
-static constexpr uint8_t REG_POST_HEAT_ON = 0x55, REG_POST_HEAT_OFF = 0x56;
-static constexpr uint8_t REG_FLAGS_SYSTEM = 0x6F, REG_FLAGS_MODE = 0x70;
+static constexpr uint8_t REG_FAULT_CODE = 0x36;
 static constexpr uint8_t REG_SERVICE_MONTHS = 0xAB, REG_PROGRAM_VARS = 0xAA;
 static constexpr uint8_t REG_BASIC_SPEED = 0xA9, REG_MAX_SPEED = 0xA5;
 static constexpr uint8_t REG_BYPASS_TEMP = 0xAF, REG_DEFROST_TEMP = 0xA7;
@@ -42,6 +40,8 @@ static constexpr uint8_t REG_HUMIDITY_SET = 0xAE, REG_SERVICE_INTERVAL = 0xA6;
 static constexpr uint8_t REG_PROGRAM2 = 0xB5;
 
 static constexpr uint8_t BIT_POWER = 0, BIT_CO2_REG = 1, BIT_HUMIDITY_REG = 2, BIT_SUMMER_MODE = 3;
+// A3H bit 4 = LED garde-filtre (pressostat), bit 7 = rappel d'entretien periodique.
+// "Etat des filtres" est volontairement mappe sur le bit 7 (rappel de remplacement).
 static constexpr uint8_t BIT_HEATING = 5, BIT_FAULT = 6, BIT_FILTER_MAINT = 7;
 static constexpr uint8_t BIT_BYPASS_OPEN = 1, BIT_FAULT_RELAY = 2, BIT_SUPPLY_FAN = 3;
 static constexpr uint8_t BIT_PREHEATING = 4, BIT_EXHAUST_FAN = 5, BIT_EXT_CONTACT = 6;
