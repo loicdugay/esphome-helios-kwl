@@ -19,7 +19,6 @@ substitutions:
   name_temp_supply:     "Température air soufflé"
   name_humidity1:       "Humidité ${room_humidity1}"
   name_humidity2:       "Humidité ${room_humidity2}"
-  name_co2:             "Niveau CO₂"
   name_fan_speed:       "Vitesse de ventilation"
   name_boost_remaining: "Fin du cycle dans..."
   name_boost_active:    "Cycle en cours"
@@ -32,7 +31,6 @@ substitutions:
   name_fault_desc:      "Détail du diagnostic"
   name_preheating:      "Auto-dégivrage"
   name_freeze_alarm:    "Alerte Givre"
-  name_co2_alarm:       "Alerte CO₂"
   name_filter_maint:    "État des filtres"
   name_service_months:  "Prochain remplacement"
   name_heating:         "Appoint de chaleur"
@@ -40,7 +38,6 @@ substitutions:
   name_exhaust_fan:     "Ventilateur extraction"
   name_ext_contact:     "Contact externe"
   name_fault_relay:     "Relais défaut"
-  name_co2_reg:         "Gestion intelligente (CO₂)"
   name_hum_reg:         "Gestion intelligente (%HR)"
   name_basic_speed:     "Ventilation nominale"
   name_max_speed:       "Ventilation maximale"
@@ -48,7 +45,6 @@ substitutions:
   name_preheat_temp:    "Seuil de dégivrage"
   name_frost_temp:      "Seuil Alerte Givre"
   name_frost_hyst:      "Hystérésis antigel"
-  name_co2_set:         "Seuil CO₂"
   name_hum_set:         "Seuil Humidité"
   name_reg_interval:    "Fréquence d'analyse des sondes"
   name_supply_pct:      "Ajustement Soufflage"
@@ -69,11 +65,6 @@ substitutions:
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
-  platformio_options:
-    board_build.extra_flags:
-      - "-DCONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=1"
-      - "-DCONFIG_LWIP_IRAM_OPTIMIZATION=0"
-      - "-DCONFIG_SPI_MASTER_IN_IRAM=0"
   on_boot:
     priority: -100
     then:
@@ -85,8 +76,19 @@ esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
+    # Optimisations memoire : les options Kconfig ESP-IDF doivent passer par
+    # sdkconfig_options (les -D dans platformio_options sont ignores).
+    sdkconfig_options:
+      # Code FreeRTOS/ringbuf en flash plutot qu'en IRAM
+      CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH: "y"
+      CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH: "y"
+      # WiFi/lwIP sans optimisation IRAM (debit reduit, sans impact ici)
+      CONFIG_ESP_WIFI_IRAM_OPT: "n"
+      CONFIG_ESP_WIFI_RX_IRAM_OPT: "n"
+      CONFIG_LWIP_IRAM_OPTIMIZATION: "n"
 
 logger:
+  level: INFO
 
 psram:
   mode: quad
@@ -117,15 +119,14 @@ wifi:
         id: label_wifi_strength
         text: "\U000F092E"
 
-captive_portal:
-
 # ─── Composant externe ─────────────────────────────────────────
 
 external_components:
   - source:
       type: git
       url: https://github.com/loicdugay/esphome-helios-kwl/
-    refresh: 0s
+    components: [helios_kwl, cst3240]
+    refresh: 1d
 
 # ─── I2C + expandeur ──────────────────────────────────────────
 
@@ -149,7 +150,6 @@ touchscreen:
     reset_pin:
       xl9535:
       number: 4
-    update_interval: 32ms
     calibration:
       x_min: 0
       x_max: 480
@@ -327,10 +327,6 @@ sensor:
               id: label_humidity_kitchen
               text: !lambda 'char b[8]; sprintf(b,"%.0f %%",x); return std::string(b);'
 
-    co2_concentration:
-      name: ${name_co2}
-      id: sensor_co2
-
     boost_remaining:
       name: ${name_boost_remaining}
       id: sensor_boost_remaining
@@ -392,10 +388,6 @@ binary_sensor:
       name: ${name_freeze_alarm}
       id: bs_freeze_alarm
 
-    co2_alarm:
-      name: ${name_co2_alarm}
-      id: bs_co2_alarm
-
     filter_maintenance:
       name: ${name_filter_maint}
       id: bs_filter_maint
@@ -445,10 +437,6 @@ switch:
               id: label_bypass
               text_opa: 30%
 
-    co2_regulation:
-      name: ${name_co2_reg}
-      id: sw_co2_reg
-
     humidity_regulation:
       name: ${name_hum_reg}
       id: sw_hum_reg
@@ -488,9 +476,6 @@ number:
     frost_hysteresis:
       name: ${name_frost_hyst}
       id: num_frost_hyst
-    co2_setpoint:
-      name: ${name_co2_set}
-      id: num_co2_set
     humidity_setpoint:
       name: ${name_hum_set}
       id: num_hum_set
@@ -578,14 +563,17 @@ display:
     model: t-panel-s3
 
 # ─── Polices (SANS accents dans les glyphes texte) ────────────
+# Sources open source telechargees a la compilation :
+# - Roboto Condensed via Google Fonts (licence Apache 2.0)
+# - Material Design Icons via le depot officiel Templarian (licence Apache 2.0)
 
 font:
-  - file: "fonts/RobotoCondensed-Regular.ttf"
-    id: ash_icons_24
+  - file: "gfonts://Roboto Condensed"
+    id: icons_24
     size: 24
     bpp: 4
     extras:
-      - file: "fonts/materialdesignicons-webfont.ttf"
+      - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
         glyphs: [
           "\U000F18D7", "\U000F0F45", "\U000F0922", "\U000F058E",
           "\U000F1A45", "\U000F0EBD", "\U000F0F8B", "\U000F0210",
@@ -594,20 +582,22 @@ font:
           "\U000F0141", "\U000F0142", "\U000F04DB",
           ]
 
-  - file: "fonts/RobotoCondensed-Regular.ttf"
+  - file: "gfonts://Roboto Condensed"
     id: roboto_font_20
     size: 20
     bpp: 4
 
-  - file: "fonts/RobotoCondensed-Regular.ttf"
+  - file: "gfonts://Roboto Condensed"
     id: roboto_font_24
     size: 24
     bpp: 4
 
-  - file: "fonts/RobotoCondensed-Regular.ttf"
+  # N'affiche que la vitesse (0-8) : glyphes limites aux chiffres
+  - file: "gfonts://Roboto Condensed"
     id: roboto_font_84
     size: 84
     bpp: 4
+    glyphs: "0123456789"
 
 # ─── Horloge SNTP ─────────────────────────────────────────────
 
@@ -635,6 +625,9 @@ time:
 # ═══════════════════════════════════════════════════════════════
 
 lvgl:
+  # Buffer de dessin partiel : suffisant pour cette UI, ~340 Ko de PSRAM
+  # economises par rapport au buffer plein ecran par defaut
+  buffer_size: 25%
   style_definitions:
     - id: obj_styles
       bg_opa: TRANSP
@@ -688,7 +681,7 @@ lvgl:
                   id: label_bypass
                   text: "\U000F0F8B"
                   text_opa: 30%
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFFFFF
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 0
@@ -696,7 +689,7 @@ lvgl:
                   id: label_heat
                   text: "\U000F1A45"
                   text_opa: 30%
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFFFFF
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 1
@@ -704,7 +697,7 @@ lvgl:
                   id: label_maintenance
                   text: "\U000F0EBD"
                   text_opa: 30%
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFFFFF
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 2
@@ -712,14 +705,14 @@ lvgl:
                   id: label_boost_icon
                   text: "\U000F0210"
                   text_opa: 30%
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFFFFF
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 3
               - label:
                   id: label_wifi_strength
                   text: "\U000F092E"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFFFFF
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 4
@@ -799,7 +792,7 @@ lvgl:
             align: CENTER
             pad_bottom: 40
             pad_left: 60
-            text_font: ash_icons_24
+            text_font: icons_24
             text_color: 0xFFFFFF
 
         # ── Grille mesures bas ──
@@ -827,7 +820,7 @@ lvgl:
                   scrollbar_mode: "OFF"
                   layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
                   widgets:
-                    - label: {text: "\U000F0F45", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
+                    - label: {text: "\U000F0F45", text_font: icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
                     - label: {text: "Interieur", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
                     - label: {id: label_temp_inside, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
               # L1C2 Neuf
@@ -840,7 +833,7 @@ lvgl:
                   scrollbar_mode: "OFF"
                   layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
                   widgets:
-                    - label: {text: "\U000F006A", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
+                    - label: {text: "\U000F006A", text_font: icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
                     - label: {text: "Souffle", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
                     - label: {id: label_temp_incoming, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
               # L2C1 Exterieur
@@ -853,7 +846,7 @@ lvgl:
                   scrollbar_mode: "OFF"
                   layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
                   widgets:
-                    - label: {text: "\U000F18D7", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
+                    - label: {text: "\U000F18D7", text_font: icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
                     - label: {text: "Exterieur", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
                     - label: {id: label_temp_outside, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
               # L2C2 Rejete
@@ -866,7 +859,7 @@ lvgl:
                   scrollbar_mode: "OFF"
                   layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
                   widgets:
-                    - label: {text: "\U000F0798", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
+                    - label: {text: "\U000F0798", text_font: icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
                     - label: {text: "Rejete", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
                     - label: {id: label_temp_exhaust, text: "--C", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
               # L3C1 Humidite 1
@@ -879,7 +872,7 @@ lvgl:
                   scrollbar_mode: "OFF"
                   layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
                   widgets:
-                    - label: {text: "\U000F058E", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
+                    - label: {text: "\U000F058E", text_font: icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
                     - label: {text: "S. de bain", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
                     - label: {id: label_humidity_bathroom, text: "--%", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
               # L3C2 Humidite 2
@@ -892,7 +885,7 @@ lvgl:
                   scrollbar_mode: "OFF"
                   layout: {pad_column: 0, type: GRID, grid_rows: [FR(1)], grid_columns: [FR(20), FR(60), FR(20)]}
                   widgets:
-                    - label: {text: "\U000F058E", text_font: ash_icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
+                    - label: {text: "\U000F058E", text_font: icons_24, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 0}
                     - label: {text: "Cuisine", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 1}
                     - label: {id: label_humidity_kitchen, text: "--%", text_font: roboto_font_20, text_color: 0xFFFFFF, grid_cell_row_pos: 0, grid_cell_column_pos: 2}
 
@@ -911,7 +904,7 @@ lvgl:
             widgets:
               - label:
                   text: "\U000F0142"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xCCCCFF
                   align: CENTER
 
@@ -961,7 +954,7 @@ lvgl:
             widgets:
               - label:
                   text: "\U000F0141"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xCCCCFF
                   align: CENTER
 
@@ -1006,7 +999,7 @@ lvgl:
             widgets:
               - label:
                   text: "\U000F0717"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0x88CCFF
                   align: TOP_MID
                   y: 8
@@ -1038,7 +1031,7 @@ lvgl:
             widgets:
               - label:
                   text: "\U000F1629"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFAA44
                   align: TOP_MID
                   y: 8
@@ -1070,7 +1063,7 @@ lvgl:
             widgets:
               - label:
                   text: "\U000F04DB"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFF4444
                   align: TOP_MID
                   y: 8
@@ -1130,7 +1123,7 @@ lvgl:
             widgets:
               - label:
                   text: "\U000F012C"
-                  text_font: ash_icons_24
+                  text_font: icons_24
                   text_color: 0xFFCC44
                   align: TOP_MID
                   y: 8
