@@ -574,7 +574,7 @@ font:
     size: 24
     bpp: 4
     extras:
-      - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+      - file: "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf"
         glyphs: [
           "\U000F18D7", "\U000F0F45", "\U000F0922", "\U000F058E",
           "\U000F1A45", "\U000F0EBD", "\U000F0F8B", "\U000F0210",
