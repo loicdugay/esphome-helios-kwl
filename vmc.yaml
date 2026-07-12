@@ -335,6 +335,12 @@ sensor:
               id: label_humidity_kitchen
               text: !lambda 'char b[8]; sprintf(b,"%.0f %%",x); return std::string(b);'
 
+    # Decommenter si un capteur CO2 est installe sur la VMC (le composant
+    # polle automatiquement les registres CO2 des qu'une entite est declaree)
+    # co2_concentration:
+    #   name: "Niveau CO₂"
+    #   id: sensor_co2
+
     boost_remaining:
       name: ${name_boost_remaining}
       id: sensor_boost_remaining
@@ -396,6 +402,11 @@ binary_sensor:
       name: ${name_freeze_alarm}
       id: bs_freeze_alarm
 
+    # Decommenter si capteur CO2 installe
+    # co2_alarm:
+    #   name: "Alerte CO₂"
+    #   id: bs_co2_alarm
+
     filter_maintenance:
       name: ${name_filter_maint}
       id: bs_filter_maint
@@ -449,6 +460,11 @@ switch:
       name: ${name_hum_reg}
       id: sw_hum_reg
 
+    # Decommenter si capteur CO2 installe
+    # co2_regulation:
+    #   name: "Gestion intelligente (CO₂)"
+    #   id: sw_co2_reg
+
   - platform: lvgl
     widget: sw_lvgl_summer
     id: sw_lvgl_summer_entity
@@ -484,6 +500,10 @@ number:
     frost_hysteresis:
       name: ${name_frost_hyst}
       id: num_frost_hyst
+    # Decommenter si capteur CO2 installe
+    # co2_setpoint:
+    #   name: "Seuil CO₂"
+    #   id: num_co2_set
     humidity_setpoint:
       name: ${name_hum_set}
       id: num_hum_set

@@ -351,6 +351,7 @@ esp32:
 
 - **Cyril Jaquier** ([lostcontrol](https://github.com/lostcontrol/esphome-helios-kwl)) — auteur original, KWL EC 500 R
 - **loicdugay** — fork T-Panel S3, support complet lecture/écriture 40+ registres, cycles boost/cheminée, interface LVGL
+- **Abeer Ash** ([ash-abeer](https://github.com/ash-abeer)) — adaptation initiale du code original au matériel T-Panel S3 (dont le driver tactile CST3240, remplacé depuis par le composant natif ESPHome `cst226`), réalisée sur commande et sous le financement de **loicdugay**
 - **Protocole DIGIT** — documentation Vallox / Petteri Kähärä (2011), traduction anglaise (2021)
 
 ## Licence
