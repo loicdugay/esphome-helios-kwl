@@ -1,6 +1,6 @@
 # ESPHome — Helios KWL EC 300 Pro / Vallox via RS485
 
-![AI-Assisted](https://img.shields.io/badge/AI--assisted-Claude-D97757?logo=claude&logoColor=white)
+[![AI-Assisted](https://img.shields.io/badge/AI--assisted-Claude-D97757?logo=claude&logoColor=white)](https://claude.ai/new)
 [![ESPHome](https://img.shields.io/badge/ESPHome-2026.3+-blue)](https://esphome.io/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Composant ESPHome externe pour piloter les VMC double flux **Helios KWL** et **Vallox** via le bus RS485 (protocole DIGIT), avec affichage LVGL sur écran tactile. Intégration native Home Assistant avec auto-découverte de toutes les entités.
