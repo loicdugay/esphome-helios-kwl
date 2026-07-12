@@ -257,7 +257,10 @@ bool HeliosKwlComponent::write_register(uint8_t reg, uint8_t value) {
   wait_bus_silence();
   while (available()) { uint8_t b; read_byte(&b); }
   rx_buffer_len_ = 0;
-  ESP_LOGD(TAG, "write 0x%02X = 0x%02X (%s)", reg, value, needs_extra_mainboard_write(reg) ? "4msg" : "3msg");
+  // [CMD] = instruction envoyee a la CM (declenchee par HA ou par l'ecran).
+  // La reponse de la CM arrive ensuite sur une ligne [CM].
+  ESP_LOGI(TAG, "[CMD] ecriture registre 0x%02X = 0x%02X (%s)", reg, value,
+           needs_extra_mainboard_write(reg) ? "4msg" : "3msg");
   uint8_t m1[6] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_RC,  reg, value, 0}; m1[5] = checksum(m1, 5);
   write_array(m1, 6); flush(); delay(3);
   uint8_t m2[6] = {HELIOS_START_BYTE, address_, HELIOS_BROADCAST_ALL, reg, value, 0}; m2[5] = checksum(m2, 5);
@@ -285,11 +288,11 @@ void HeliosKwlComponent::check_verify_(uint8_t reg, uint8_t value) {
   if (verify_reg_ != (int16_t) reg) return;
   verify_reg_ = -1;
   if (value == verify_expected_) {
-    ESP_LOGI(TAG, "[verif] 0x%02X : ecriture confirmee par la CM (0x%02X)", reg, value);
+    ESP_LOGI(TAG, "[CM] registre 0x%02X : ecriture confirmee (0x%02X)", reg, value);
   } else {
     // Sur les registres volatils (0x29, 0xA3, 0x71, 0x79) la CM a pu
     // legitimement changer la valeur entre-temps.
-    ESP_LOGW(TAG, "[verif] 0x%02X : ecrit 0x%02X mais la CM renvoie 0x%02X", reg, verify_expected_, value);
+    ESP_LOGW(TAG, "[CM] registre 0x%02X : ecrit 0x%02X mais la CM renvoie 0x%02X", reg, verify_expected_, value);
   }
 }
 
@@ -370,6 +373,10 @@ void HeliosKwlComponent::update() {
   } else {
     if (!do_one_s2_poll()) do_one_s3_poll();
   }
+  // Remontee initiale acceleree : pendant les 2 premieres minutes apres le
+  // boot, un poll S3 supplementaire par cycle. Tous les reglages sont ainsi
+  // presents dans HA en ~20 s au lieu de ~90 s (1 registre/6 s sinon).
+  if (millis() < 120000) do_one_s3_poll();
 }
 
 void HeliosKwlComponent::dump_config() {
@@ -478,8 +485,10 @@ void HeliosKwlComponent::publish_io_port(uint8_t v) {
   if (exhaust_fan_running_) exhaust_fan_running_->publish_state(!((v >> BIT_EXHAUST_FAN) & 1));
   if (preheating_active_)   preheating_active_->publish_state((v >> BIT_PREHEATING) & 1);
   if (external_contact_)    external_contact_->publish_state((v >> BIT_EXT_CONTACT) & 1);
-  // 08H bit 2 : 0 = relais ouvert, 1 = ferme (le relais se ferme sur defaut)
-  if (fault_relay_)         fault_relay_->publish_state((v >> BIT_FAULT_RELAY) & 1);
+  // 08H bit 2 : 0 = relais ouvert, 1 = ferme. Verifie sur EC 300 Pro : le
+  // relais est FERME en fonctionnement normal (logique fail-safe) et
+  // s'ouvre sur defaut -> capteur ON quand le contact est ouvert.
+  if (fault_relay_)         fault_relay_->publish_state(!((v >> BIT_FAULT_RELAY) & 1));
 }
 
 void HeliosKwlComponent::publish_alarms(uint8_t v) {
@@ -573,31 +582,31 @@ std::pair<uint8_t,uint8_t> HeliosKwlComponent::co2_to_bytes(uint16_t p) {
 // ══ Actions ═══════════════════════════════════════════════════════
 
 void HeliosKwlComponent::control_fan(bool on, optional<uint8_t> spd) {
-  ESP_LOGI(TAG, "[HA] Ventilation -> %s%s", on ? "ON" : "OFF",
+  ESP_LOGI(TAG, "[CMD] Ventilation -> %s%s", on ? "ON" : "OFF",
            spd.has_value() ? (" vitesse " + std::to_string(*spd)).c_str() : "");
   write_bit(REG_STATES, BIT_POWER, on);
   if (spd.has_value() && *spd >= 1 && *spd <= 8) write_register(REG_FAN_SPEED, speed_to_bitmask(*spd));
 }
 void HeliosKwlComponent::set_fan_speed(uint8_t s) {
-  ESP_LOGI(TAG, "[HA] Vitesse -> %d", s);
+  ESP_LOGI(TAG, "[CMD] Vitesse -> %d", s);
   if (s == 0) write_bit(REG_STATES, BIT_POWER, false);
   else write_register(REG_FAN_SPEED, speed_to_bitmask(s));
 }
 void HeliosKwlComponent::set_fan_on(bool on) {
-  ESP_LOGI(TAG, "[HA] Alimentation -> %s", on ? "ON" : "OFF");
+  ESP_LOGI(TAG, "[CMD] Alimentation -> %s", on ? "ON" : "OFF");
   write_bit(REG_STATES, BIT_POWER, on);
 }
 
 void HeliosKwlComponent::control_co2_regulation(bool e) {
-  ESP_LOGI(TAG, "[HA] Regulation CO2 -> %s", e ? "ON" : "OFF");
+  ESP_LOGI(TAG, "[CMD] Regulation CO2 -> %s", e ? "ON" : "OFF");
   write_bit(REG_STATES, BIT_CO2_REG, e);
 }
 void HeliosKwlComponent::control_humidity_regulation(bool e) {
-  ESP_LOGI(TAG, "[HA] Regulation HR -> %s", e ? "ON" : "OFF");
+  ESP_LOGI(TAG, "[CMD] Regulation HR -> %s", e ? "ON" : "OFF");
   write_bit(REG_STATES, BIT_HUMIDITY_REG, e);
 }
 void HeliosKwlComponent::control_summer_mode(bool e) {
-  ESP_LOGI(TAG, "[HA] Mode ete -> %s", e ? "ON" : "OFF");
+  ESP_LOGI(TAG, "[CMD] Mode ete -> %s", e ? "ON" : "OFF");
   write_bit(REG_STATES, BIT_SUMMER_MODE, e);
 }
 

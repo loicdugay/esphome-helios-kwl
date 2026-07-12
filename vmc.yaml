@@ -126,7 +126,11 @@ external_components:
       type: git
       url: https://github.com/loicdugay/esphome-helios-kwl/
     components: [helios_kwl]
-    refresh: 1d
+    # 0s force le re-clone a chaque compilation : indispensable tant que le
+    # composant evolue (avec 1d, un build peut reutiliser un cache vieux
+    # d'une journee et ignorer les derniers commits). Passer a 1d une fois
+    # le composant stabilise.
+    refresh: 0s
 
 # ─── I2C + expandeur ──────────────────────────────────────────
 
