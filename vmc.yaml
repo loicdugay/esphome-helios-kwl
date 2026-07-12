@@ -1,15 +1,23 @@
 # ═══════════════════════════════════════════════════════════════════
-# VMC Helios KWL EC 300 Pro — Lilygo T-Panel S3 (480x480)
-# UI "Premium Domotique" — page unique, geometrie verrouillee (0 scroll)
+# VMC Helios KWL EC 300 Pro — Lilygo T-Panel S3 (ecran tactile 480x480)
 #
-# Architecture du fichier :
-#   1. Substitutions (noms HA + palette UI)
-#   2. Plateforme / reseau / composant helios_kwl
-#   3. Entites HA (sensors, switches, numbers, selects, buttons)
-#      -> chaque hook on_value alimente l'UI (data-binding)
-#   4. Scripts UI (mode, cycles, alimentation, confirmation filtres)
-#   5. Polices (Montserrat gfonts + glyphes accents FR, symboles LVGL natifs)
-#   6. LVGL : header 46px / corps arc / grille mesures / footer 4 boutons
+# UI "Premium Domotique" : page unique, geometrie verrouillee (0 scroll),
+# palette sombre mate, polices Montserrat (accents FR), symboles LVGL natifs.
+#
+# Le fichier se lit de haut en bas :
+#   1. Substitutions   — noms des entites HA + palette de couleurs UI
+#   2. Plateforme      — carte, framework, memoire, logs
+#   3. Connectivite    — WiFi, API Home Assistant, OTA
+#   4. Liaison VMC     — composant helios_kwl + bus RS485
+#   5. Ecran           — tactile, dalle RGB, retroeclairage, polices
+#   6. Horloge         — SNTP + mise a jour du header
+#   7. Etat & scripts  — variables globales + automatisations UI
+#   8. Entites HA      — capteurs/commandes exposes (avec data-binding UI)
+#   9. Interface LVGL  — header / arc / grille / footer
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
+# 1. SUBSTITUTIONS — noms HA et palette UI
 # ═══════════════════════════════════════════════════════════════════
 
 substitutions:
@@ -82,7 +90,9 @@ substitutions:
   ui_blue:   "0x60A5FA"   # SdB
   ui_red:    "0xEF4444"   # defaut / confirmation
 
-# ─── Plateforme ────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
+# 2. PLATEFORME — ESP32-S3, framework, memoire
+# ═══════════════════════════════════════════════════════════════════
 
 esphome:
   name: ${device_name}
@@ -96,8 +106,15 @@ esphome:
 
 esp32:
   board: esp32-s3-devkitc-1
+  # 240 MHz (au lieu de 160) : rendu LVGL et flush ecran ~50% plus rapides,
+  # pour quelques dizaines de mW supplementaires
+  cpu_frequency: 240MHz
   framework:
     type: esp-idf
+    advanced:
+      # Compilation optimisee vitesse (-O2) plutot que taille : la flash a
+      # de la marge (~65%), autant la depenser en performance d'affichage
+      compiler_optimization: PERF
     # Optimisations memoire : les options Kconfig ESP-IDF doivent passer par
     # sdkconfig_options (les -D dans platformio_options sont ignores).
     sdkconfig_options:
@@ -107,22 +124,16 @@ esp32:
       CONFIG_ESP_WIFI_RX_IRAM_OPT: "n"
       CONFIG_LWIP_IRAM_OPTIMIZATION: "n"
 
-logger:
-  level: INFO
-
 psram:
   mode: quad
   speed: 80MHz
 
-# ─── Reseau ────────────────────────────────────────────────────
+logger:
+  level: INFO
 
-api:
-  encryption:
-    key: !secret api_key
-
-ota:
-  - platform: esphome
-    password: !secret ota_password
+# ═══════════════════════════════════════════════════════════════════
+# 3. CONNECTIVITE — WiFi, API, mises a jour OTA
+# ═══════════════════════════════════════════════════════════════════
 
 wifi:
   ssid: !secret wifi_ssid
@@ -139,7 +150,17 @@ wifi:
         id: icon_wifi
         text_opa: 20%
 
-# ─── Composant externe ─────────────────────────────────────────
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# ═══════════════════════════════════════════════════════════════════
+# 4. LIAISON VMC — composant helios_kwl sur bus RS485
+# ═══════════════════════════════════════════════════════════════════
 
 external_components:
   - source:
@@ -150,7 +171,20 @@ external_components:
     # composant evolue. Passer a 1d une fois le composant stabilise.
     refresh: 0s
 
-# ─── I2C + expandeur ──────────────────────────────────────────
+uart:
+  id: uart_bus
+  tx_pin: 16
+  rx_pin: 15
+  baud_rate: 9600
+
+helios_kwl:
+  id: helios_kwl_0
+  uart_id: uart_bus
+  update_interval: 1s
+
+# ═══════════════════════════════════════════════════════════════════
+# 5. ECRAN & PERIPHERIQUES — tactile, dalle, retroeclairage, polices
+# ═══════════════════════════════════════════════════════════════════
 
 i2c:
   - id: tp_i2c
@@ -162,7 +196,20 @@ i2c:
 xl9535:
   id: expander
 
-# ─── Tactile CST3240 (driver natif cst226, meme protocole Hynitron) ──
+spi:
+  - id: lcd_spi
+    interface: software
+    mosi_pin:
+      xl9535:
+      number: 16
+    clk_pin:
+      xl9535:
+      number: 15
+
+display:
+  - platform: mipi_rgb
+    model: t-panel-s3
+
 # Polling pur a 32 ms (PAS d'interrupt_pin) : avec une interruption declaree,
 # ESPHome coupe le polling et le suivi de glissement devient saccade.
 
@@ -192,22 +239,87 @@ touchscreen:
             - lvgl.widget.update: {id: sleep_shield, hidden: true}
             - lvgl.widget.redraw:
 
-# ─── UART RS485 ────────────────────────────────────────────────
+output:
+  - platform: ledc
+    id: backlight_output
+    pin: 14
+    frequency: 1220Hz
+    inverted: false
+    min_power: 15%
 
-uart:
-  id: uart_bus
-  tx_pin: 16
-  rx_pin: 15
-  baud_rate: 9600
+light:
+  - platform: monochromatic
+    output: backlight_output
+    name: ${name_backlight}
+    id: lcd_backlight
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+    gamma_correct: 1.0
 
-# ─── Composant Helios KWL ─────────────────────────────────────
+# - Montserrat via Google Fonts (Apache 2.0), glyphes limites au strict
+#   necessaire + accents francais complets (é è ê ë à â î ï ô û ù ç °)
+# - Les icones utilisent les symboles NATIFS LVGL des polices montserrat_XX
+#   integrees (WIFI, WARNING, SETTINGS, POWER, SHUFFLE, CHARGE)
+# - Seule exception : l'horloge du header (absente des symboles LVGL),
+#   1 glyphe MDI de 12px
 
-helios_kwl:
-  id: helios_kwl_0
-  uart_id: uart_bus
-  update_interval: 1s
+font:
+  - file: "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_clock_12
+    size: 12
+    bpp: 4
+    glyphs: ["\U000F0150"]   # horloge
 
-# ─── Variables globales ───────────────────────────────────────
+  - file: "gfonts://Montserrat@500"
+    id: mont_12
+    size: 12
+    bpp: 4
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-éèêëàâîïôûùçÉÈÊÀÎÔÛÇ"
+
+  - file: "gfonts://Montserrat@500"
+    id: mont_14
+    size: 14
+    bpp: 4
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-éèêëàâîïôûùçÉÈÊÀÎÔÛÇ"
+
+  - file: "gfonts://Montserrat@600"
+    id: mont_18
+    size: 18
+    bpp: 4
+    glyphs: "0123456789 %°.,-INTSOUFLECBRDdbmoisax"
+
+# ═══════════════════════════════════════════════════════════════════
+# 6. HORLOGE — SNTP + header heure/date
+# ═══════════════════════════════════════════════════════════════════
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: ${timezone}
+    on_time:
+      - seconds: 0
+        minutes: /1
+        then:
+          - lvgl.label.update:
+              id: time_lbl
+              text: !lambda |-
+                auto n = id(sntp_time).now();
+                char b[8];
+                snprintf(b, sizeof(b), "%02d:%02d", n.hour, n.minute);
+                return std::string(b);
+          - lvgl.label.update:
+              id: date_lbl
+              text: !lambda |-
+                static const char *D[] = {"Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"};
+                static const char *M[] = {"janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"};
+                auto n = id(sntp_time).now();
+                char b[40];
+                snprintf(b, sizeof(b), "%s %d %s %04d", D[n.day_of_week - 1], n.day_of_month, M[n.month - 1], n.year);
+                return std::string(b);
+
+# ═══════════════════════════════════════════════════════════════════
+# 7. ETAT & SCRIPTS UI — variables et automatisations
+# ═══════════════════════════════════════════════════════════════════
 
 globals:
   - id: arc_updating           # anti-boucle arc <-> fan
@@ -218,8 +330,6 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
-
-# ─── Scripts ──────────────────────────────────────────────────
 
 script:
   - id: backlight_timeout
@@ -332,6 +442,30 @@ script:
             - lvgl.label.update: {id: sub_fire, text: "15 min", text_color: "${ui_muted}"}
             - lvgl.widget.update: {id: bar_fire, hidden: true}
 
+  # Pastilles de regulation intelligente (sous l'arc) : HR = pilotage par
+  # l'humidite, CO2 = pilotage par le CO2. Active = teinte pleine,
+  # inactive = estompee.
+  - id: ui_apply_regul
+    then:
+      - if:
+          condition:
+            switch.is_on: sw_hum_reg
+          then:
+            - lvgl.widget.update: {id: chip_hr, bg_color: "${ui_blue}", bg_opa: 14%}
+            - lvgl.label.update: {id: chip_hr_lbl, text_color: "${ui_blue}"}
+          else:
+            - lvgl.widget.update: {id: chip_hr, bg_color: "${ui_card}", bg_opa: 100%}
+            - lvgl.label.update: {id: chip_hr_lbl, text_color: "${ui_faint}"}
+      - if:
+          condition:
+            switch.is_on: sw_co2_reg
+          then:
+            - lvgl.widget.update: {id: chip_co2, bg_color: "${ui_green}", bg_opa: 14%}
+            - lvgl.label.update: {id: chip_co2_lbl, text_color: "${ui_green}"}
+          else:
+            - lvgl.widget.update: {id: chip_co2, bg_color: "${ui_card}", bg_opa: 100%}
+            - lvgl.label.update: {id: chip_co2_lbl, text_color: "${ui_faint}"}
+
   # VMC eteinte : voile 90% plein ecran, boutons du footer assombris et
   # desactives ; seul le bouton power reste lisible (vert doux ~50%).
   # VMC allumee : voile masque, footer restaure (ui_refresh_boost rejoue
@@ -367,7 +501,9 @@ script:
             - lvgl.label.update: {id: icon_power, text_color: "${ui_text}"}
             - lvgl.label.update: {id: lbl_power, text: "ON", text_color: "${ui_text}"}
 
-# ─── Fan natif ────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
+# 8. ENTITES HOME ASSISTANT — avec data-binding vers l'UI
+# ═══════════════════════════════════════════════════════════════════
 
 fan:
   - platform: helios_kwl
@@ -402,8 +538,6 @@ fan:
               text: !lambda 'char b[4]; snprintf(b, sizeof(b), "%d", (int) id(helios_kwl_fan).speed); return std::string(b);'
           - lambda: id(arc_updating) = false;
           - script.execute: ui_apply_power
-
-# ─── Sensors ───────────────────────────────────────────────────
 
 sensor:
   - platform: wifi_signal
@@ -448,7 +582,7 @@ sensor:
         then:
           - lvgl.label.update:
               id: lbl_exh
-              text: !lambda 'char b[24]; snprintf(b, sizeof(b), "Vicié  %.0f°", x); return std::string(b);'
+              text: !lambda 'char b[24]; snprintf(b, sizeof(b), "Rejeté  %.0f°", x); return std::string(b);'
 
     temperature_extract:
       name: ${name_temp_extract}
@@ -555,26 +689,6 @@ sensor:
         then:
           - script.execute: ui_refresh_boost
 
-# ─── Text sensors ──────────────────────────────────────────────
-
-text_sensor:
-  - platform: helios_kwl
-    helios_kwl_id: helios_kwl_0
-
-    fault_description:
-      name: ${name_fault_desc}
-      id: ts_fault_desc
-
-    boost_active:
-      name: ${name_boost_active}
-      id: ts_boost_active
-
-    bypass_state:
-      name: ${name_bypass_state}
-      id: ts_bypass_state
-
-# ─── Binary sensors ────────────────────────────────────────────
-
 binary_sensor:
   - platform: helios_kwl
     helios_kwl_id: helios_kwl_0
@@ -628,7 +742,21 @@ binary_sensor:
       name: ${name_fault_relay}
       id: bs_fault_relay
 
-# ─── Switches ──────────────────────────────────────────────────
+text_sensor:
+  - platform: helios_kwl
+    helios_kwl_id: helios_kwl_0
+
+    fault_description:
+      name: ${name_fault_desc}
+      id: ts_fault_desc
+
+    boost_active:
+      name: ${name_boost_active}
+      id: ts_boost_active
+
+    bypass_state:
+      name: ${name_bypass_state}
+      id: ts_bypass_state
 
 switch:
   - platform: helios_kwl
@@ -647,13 +775,24 @@ switch:
     humidity_regulation:
       name: ${name_hum_reg}
       id: sw_hum_reg
+      on_turn_on:
+        then:
+          - script.execute: ui_apply_regul
+      on_turn_off:
+        then:
+          - script.execute: ui_apply_regul
 
-    # Decommenter si capteur CO2 installe
-    # co2_regulation:
-    #   name: "Gestion intelligente (CO₂)"
-    #   id: sw_co2_reg
-
-# ─── Numbers ───────────────────────────────────────────────────
+    # Le switch de regulation CO2 pilote un bit de la CM : il reste utile
+    # meme sans sonde installee (et necessaire pour la pastille CO2 de l'UI)
+    co2_regulation:
+      name: "Gestion intelligente (CO₂)"
+      id: sw_co2_reg
+      on_turn_on:
+        then:
+          - script.execute: ui_apply_regul
+      on_turn_off:
+        then:
+          - script.execute: ui_apply_regul
 
 number:
   - platform: helios_kwl
@@ -697,8 +836,6 @@ number:
       name: ${name_svc_interval}
       id: num_svc_interval
 
-# ─── Selects ───────────────────────────────────────────────────
-
 select:
   - platform: helios_kwl
     helios_kwl_id: helios_kwl_0
@@ -712,8 +849,6 @@ select:
     max_speed_continuous:
       name: ${name_max_cont}
       id: sel_max_cont
-
-# ─── Buttons ───────────────────────────────────────────────────
 
 button:
   - platform: helios_kwl
@@ -732,108 +867,15 @@ button:
       name: ${name_btn_ack}
       id: btn_ack_maint
 
-# ─── Retroeclairage ───────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
+# 9. INTERFACE LVGL — header / arc / grille mesures / footer
+# ═══════════════════════════════════════════════════════════════════
 
-output:
-  - platform: ledc
-    id: backlight_output
-    pin: 14
-    frequency: 1220Hz
-    inverted: false
-    min_power: 15%
-
-light:
-  - platform: monochromatic
-    output: backlight_output
-    name: ${name_backlight}
-    id: lcd_backlight
-    restore_mode: ALWAYS_ON
-    default_transition_length: 500ms
-    gamma_correct: 1.0
-
-# ─── SPI + Ecran ──────────────────────────────────────────────
-
-spi:
-  - id: lcd_spi
-    interface: software
-    mosi_pin:
-      xl9535:
-      number: 16
-    clk_pin:
-      xl9535:
-      number: 15
-
-display:
-  - platform: mipi_rgb
-    model: t-panel-s3
-
-# ─── Polices ──────────────────────────────────────────────────
-# - Montserrat via Google Fonts (Apache 2.0), glyphes limites au strict
-#   necessaire + accents francais complets (é è ê ë à â î ï ô û ù ç °)
-# - Les icones utilisent les symboles NATIFS LVGL des polices montserrat_XX
-#   integrees (WIFI, WARNING, SETTINGS, POWER, SHUFFLE, CHARGE)
-# - Seule exception : l'horloge du header (absente des symboles LVGL),
-#   1 glyphe MDI de 12px
-
-font:
-  - file: "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf"
-    id: mdi_clock_12
-    size: 12
-    bpp: 4
-    glyphs: ["\U000F0150"]   # horloge
-
-  - file: "gfonts://Montserrat@500"
-    id: mont_12
-    size: 12
-    bpp: 4
-    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-éèêëàâîïôûùçÉÈÊÀÎÔÛÇ"
-
-  - file: "gfonts://Montserrat@500"
-    id: mont_14
-    size: 14
-    bpp: 4
-    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-éèêëàâîïôûùçÉÈÊÀÎÔÛÇ"
-
-  - file: "gfonts://Montserrat@600"
-    id: mont_18
-    size: 18
-    bpp: 4
-    glyphs: "0123456789 %°.,-INTSOUFLECBRDdbmoisax"
-
-# ─── Horloge SNTP ─────────────────────────────────────────────
-
-time:
-  - platform: sntp
-    id: sntp_time
-    timezone: ${timezone}
-    on_time:
-      - seconds: 0
-        minutes: /1
-        then:
-          - lvgl.label.update:
-              id: time_lbl
-              text: !lambda |-
-                auto n = id(sntp_time).now();
-                char b[8];
-                snprintf(b, sizeof(b), "%02d:%02d", n.hour, n.minute);
-                return std::string(b);
-          - lvgl.label.update:
-              id: date_lbl
-              text: !lambda |-
-                static const char *D[] = {"Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"};
-                static const char *M[] = {"janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"};
-                auto n = id(sntp_time).now();
-                char b[40];
-                snprintf(b, sizeof(b), "%s %d %s %04d", D[n.day_of_week - 1], n.day_of_month, M[n.month - 1], n.year);
-                return std::string(b);
-
-# ═══════════════════════════════════════════════════════════════
 # LVGL — page unique, 0 scroll, geometrie fixe
 #   Header  y   0..46   heure + date + icones etat
 #   Corps   y  46..316  arc de vitesse + pastille de mode
 #   Grille  y 316..410  4 mesures + micro-barres + ligne secondaire
 #   Footer  y 410..480  Grand Air | Cheminee | Filtres | Power
-# ═══════════════════════════════════════════════════════════════
 
 lvgl:
   # Buffer plein ecran : rendu en une passe (PSRAM 8 Mo disponible)
@@ -889,6 +931,7 @@ lvgl:
                 return std::string(b);
           - lambda: id(arc_updating) = false;
           - script.execute: ui_apply_mode
+          - script.execute: ui_apply_regul
           - script.execute: ui_refresh_boost
           - script.execute: ui_apply_power
 
@@ -1061,6 +1104,56 @@ lvgl:
                   text_font: mont_14
                   text_color: "${ui_orange}"
 
+        # Pastilles de regulation intelligente, dans l'ouverture basse de
+        # l'arc (secteur 45-135° sans anneau) : HR a gauche, CO2 a droite
+        - button:
+            id: chip_hr
+            align: TOP_MID
+            x: -80
+            y: 272
+            width: 64
+            height: 30
+            bg_color: "${ui_card}"
+            border_width: 1
+            border_color: "${ui_line}"
+            border_opa: 20%
+            radius: 15
+            shadow_width: 0
+            on_click:
+              then:
+                - switch.toggle: sw_hum_reg
+            widgets:
+              - label:
+                  id: chip_hr_lbl
+                  align: CENTER
+                  text: "HR"
+                  text_font: mont_12
+                  text_color: "${ui_faint}"
+
+        - button:
+            id: chip_co2
+            align: TOP_MID
+            x: 80
+            y: 272
+            width: 64
+            height: 30
+            bg_color: "${ui_card}"
+            border_width: 1
+            border_color: "${ui_line}"
+            border_opa: 20%
+            radius: 15
+            shadow_width: 0
+            on_click:
+              then:
+                - switch.toggle: sw_co2_reg
+            widgets:
+              - label:
+                  id: chip_co2_lbl
+                  align: CENTER
+                  text: "CO2"
+                  text_font: mont_12
+                  text_color: "${ui_faint}"
+
         # ────────────────────────────────────────────────────
         # 3. GRILLE MESURES (4 colonnes de 105 px + ligne secondaire)
         # ────────────────────────────────────────────────────
@@ -1092,7 +1185,7 @@ lvgl:
 
         # Ligne secondaire (air entrant / air rejete)
         - label: {id: lbl_out, x: 22,  y: 388, width: 220, text: "Extérieur  --°", text_align: CENTER, text_font: mont_12, text_color: "${ui_muted}"}
-        - label: {id: lbl_exh, x: 238, y: 388, width: 220, text: "Vicié  --°",     text_align: CENTER, text_font: mont_12, text_color: "${ui_muted}"}
+        - label: {id: lbl_exh, x: 238, y: 388, width: 220, text: "Rejeté  --°",     text_align: CENTER, text_font: mont_12, text_color: "${ui_muted}"}
 
         # ────────────────────────────────────────────────────
         # Voile OFF : assombrit TOUT l'ecran quand la VMC est eteinte.
