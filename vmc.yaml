@@ -75,8 +75,8 @@ substitutions:
   ui_text:   "0xF1F5F9"   # texte principal
   ui_muted:  "0x8E9FB8"   # texte secondaire
   ui_faint:  "0x70819A"   # libelles de colonnes
-  ui_cyan:   "0x06B6D4"   # mode Normal
-  ui_orange: "0xF97316"   # mode Air frais + cycle actif
+  ui_cyan:   "0x06B6D4"   # mode Air frais (ete, bypass = fraicheur)
+  ui_orange: "0xF97316"   # mode Normal (hiver, chaleur conservee) + cycle actif
   ui_green:  "0x10B981"   # interieur / ON
   ui_amber:  "0xFBBF24"   # souffle / filtre
   ui_blue:   "0x60A5FA"   # SdB
@@ -182,6 +182,15 @@ touchscreen:
       y_max: 480
     on_touch:
       - script.execute: backlight_timeout
+    on_release:
+      # Reveil depuis la veille anti-marquage : le toucher de reveil est
+      # absorbe (LVGL etait en pause, aucun widget ne le recoit).
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.update: {id: sleep_shield, hidden: true}
+            - lvgl.widget.redraw:
 
 # ─── UART RS485 ────────────────────────────────────────────────
 
@@ -233,8 +242,9 @@ script:
       - lvgl.label.update: {id: title_filter, text: "Filtres", text_color: "${ui_muted}"}
       - lvgl.widget.update: {id: btn_filter, bg_color: "${ui_card}"}
 
-  # Couleurs du mode (arc + knob + pastille + icone bypass) : cyan = Normal,
-  # orange cuivre = Air frais. Appele par sw_summer et au chargement.
+  # Couleurs du mode (arc + knob + pastille + icone bypass) :
+  # orange cuivre = Normal (hiver, on conserve la chaleur),
+  # cyan = Air frais (ete, le froid se lit en bleu).
   - id: ui_apply_mode
     then:
       - if:
@@ -243,18 +253,18 @@ script:
           then:
             - lvgl.widget.update:
                 id: speed_arc
-                indicator: {arc_color: "${ui_orange}"}
-                knob: {border_color: "${ui_orange}"}
-            - lvgl.widget.update: {id: mode_pill, bg_color: "${ui_orange}"}
-            - lvgl.label.update: {id: mode_lbl, text: "Air frais", text_color: "${ui_orange}"}
-            - lvgl.label.update: {id: icon_bypass, text_color: "${ui_orange}", text_opa: 100%}
-          else:
-            - lvgl.widget.update:
-                id: speed_arc
                 indicator: {arc_color: "${ui_cyan}"}
                 knob: {border_color: "${ui_cyan}"}
             - lvgl.widget.update: {id: mode_pill, bg_color: "${ui_cyan}"}
-            - lvgl.label.update: {id: mode_lbl, text: "Normal", text_color: "${ui_cyan}"}
+            - lvgl.label.update: {id: mode_lbl, text: "Air frais", text_color: "${ui_cyan}"}
+            - lvgl.label.update: {id: icon_bypass, text_color: "${ui_cyan}", text_opa: 100%}
+          else:
+            - lvgl.widget.update:
+                id: speed_arc
+                indicator: {arc_color: "${ui_orange}"}
+                knob: {border_color: "${ui_orange}"}
+            - lvgl.widget.update: {id: mode_pill, bg_color: "${ui_orange}"}
+            - lvgl.label.update: {id: mode_lbl, text: "Normal", text_color: "${ui_orange}"}
             - lvgl.label.update: {id: icon_bypass, text_color: "${ui_muted}", text_opa: 20%}
 
   # Etat des boutons de cycle : 0 = repos, 1 = Grand Air actif, 2 = Cheminee
@@ -322,8 +332,10 @@ script:
             - lvgl.label.update: {id: sub_fire, text: "15 min", text_color: "${ui_muted}"}
             - lvgl.widget.update: {id: bar_fire, hidden: true}
 
-  # VMC eteinte : voile 90% sur header + corps, bouton power vert "ON".
-  # VMC allumee : voile masque, bouton power discret "OFF".
+  # VMC eteinte : voile 90% plein ecran, boutons du footer assombris et
+  # desactives ; seul le bouton power reste lisible (vert doux ~50%).
+  # VMC allumee : voile masque, footer restaure (ui_refresh_boost rejoue
+  # l'etat exact des boutons de cycle).
   - id: ui_apply_power
     then:
       - if:
@@ -331,12 +343,27 @@ script:
             lambda: 'return id(helios_kwl_fan).state;'
           then:
             - lvgl.widget.update: {id: mask_off, hidden: true}
-            - lvgl.widget.update: {id: btn_power, bg_color: "${ui_card}"}
+            - lvgl.widget.update: {id: btn_air, state: {disabled: false}}
+            - lvgl.widget.update: {id: btn_fire, state: {disabled: false}}
+            - lvgl.widget.update: {id: btn_filter, state: {disabled: false}, bg_color: "${ui_card}"}
+            - lvgl.label.update: {id: title_filter, text_color: "${ui_muted}"}
+            - lvgl.label.update: {id: sub_filter, text_color: "${ui_muted}"}
+            - lvgl.widget.update: {id: btn_power, bg_color: "${ui_card}", bg_opa: 100%}
             - lvgl.label.update: {id: icon_power, text_color: "${ui_muted}"}
             - lvgl.label.update: {id: lbl_power, text: "OFF", text_color: "${ui_muted}"}
+            - script.execute: ui_refresh_boost
           else:
             - lvgl.widget.update: {id: mask_off, hidden: false}
-            - lvgl.widget.update: {id: btn_power, bg_color: "${ui_green}"}
+            - lvgl.widget.update: {id: btn_air, state: {disabled: true}, bg_color: "0x0A101C"}
+            - lvgl.label.update: {id: title_air, text_color: "0x3A4658"}
+            - lvgl.label.update: {id: sub_air, text_color: "0x3A4658"}
+            - lvgl.widget.update: {id: btn_fire, state: {disabled: true}, bg_color: "0x0A101C"}
+            - lvgl.label.update: {id: title_fire, text_color: "0x3A4658"}
+            - lvgl.label.update: {id: sub_fire, text_color: "0x3A4658"}
+            - lvgl.widget.update: {id: btn_filter, state: {disabled: true}, bg_color: "0x0A101C"}
+            - lvgl.label.update: {id: title_filter, text_color: "0x3A4658"}
+            - lvgl.label.update: {id: sub_filter, text_color: "0x3A4658"}
+            - lvgl.widget.update: {id: btn_power, bg_color: "${ui_green}", bg_opa: 50%}
             - lvgl.label.update: {id: icon_power, text_color: "${ui_text}"}
             - lvgl.label.update: {id: lbl_power, text: "ON", text_color: "${ui_text}"}
 
@@ -813,6 +840,16 @@ lvgl:
   buffer_size: 100%
   touchscreens:
     - touchscreen_id: my_touchscreen
+  # Veille anti-marquage LCD : apres 5 min sans toucher, frame noire +
+  # retroeclairage coupe + rendu LVGL en pause. Une image statique
+  # affichee en continu (meme attenuee) finit par marquer la dalle.
+  on_idle:
+    - timeout: 5min
+      then:
+        - lvgl.widget.update: {id: sleep_shield, hidden: false}
+        - delay: 300ms   # laisse le temps de dessiner la frame noire
+        - light.turn_off: lcd_backlight
+        - lvgl.pause:
 
   style_definitions:
     - id: st_plain          # conteneur invisible, fige
@@ -955,14 +992,14 @@ lvgl:
             bg_opa: TRANSP
             border_width: 0
             indicator:
-              arc_color: "${ui_cyan}"
+              arc_color: "${ui_orange}"   # defaut = mode Normal (hiver)
               arc_width: 14
               arc_rounded: true
             knob:
               bg_color: "${ui_text}"
               radius: 9999
               border_width: 2
-              border_color: "${ui_cyan}"
+              border_color: "${ui_orange}"
               pad_all: 4
             on_value:
               then:
@@ -1008,7 +1045,7 @@ lvgl:
             y: 224
             width: 150
             height: 36
-            bg_color: "${ui_cyan}"
+            bg_color: "${ui_orange}"
             bg_opa: 14%
             border_width: 0
             radius: 12
@@ -1022,7 +1059,7 @@ lvgl:
                   align: CENTER
                   text: "Normal"
                   text_font: mont_14
-                  text_color: "${ui_cyan}"
+                  text_color: "${ui_orange}"
 
         # ────────────────────────────────────────────────────
         # 3. GRILLE MESURES (4 colonnes de 105 px + ligne secondaire)
@@ -1058,16 +1095,18 @@ lvgl:
         - label: {id: lbl_exh, x: 238, y: 388, width: 220, text: "Vicié  --°",     text_align: CENTER, text_font: mont_12, text_color: "${ui_muted}"}
 
         # ────────────────────────────────────────────────────
-        # Voile OFF : masque header + corps quand la VMC est eteinte.
-        # Declare AVANT le footer pour laisser les boutons visibles.
-        # Il intercepte aussi les touches sur l'arc/la pastille.
+        # Voile OFF : assombrit TOUT l'ecran quand la VMC est eteinte.
+        # Declare AVANT le footer : les 4 boutons restent au-dessus
+        # (les 3 premiers sont desactives + assombris par ui_apply_power,
+        # seul le bouton power reste actif). Le voile intercepte les
+        # touches sur l'arc et la pastille.
         # ────────────────────────────────────────────────────
         - obj:
             id: mask_off
             x: 0
             y: 0
             width: 480
-            height: 410
+            height: 480
             hidden: true
             bg_color: 0x000000
             bg_opa: 90%
@@ -1098,8 +1137,17 @@ lvgl:
                         float fs = id(sensor_boost_state).state;
                         return isnan(fs) || ((int) fs) == 0;
                     then:
+                      # UI optimiste : etat demande affiche immediatement,
+                      # "..." le temps que la CM confirme (1-2 s), puis
+                      # ui_refresh_boost reconcilie avec l'etat reel.
+                      - lvgl.widget.update: {id: btn_air, bg_color: "${ui_orange}"}
+                      - lvgl.label.update: {id: title_air, text_color: "${ui_text}"}
+                      - lvgl.label.update: {id: sub_air, text: "...", text_color: "${ui_text}"}
+                      - lvgl.label.update: {id: title_fire, text: "Annuler", text_color: "${ui_faint}"}
+                      - lvgl.label.update: {id: sub_fire, text: "le cycle", text_color: "${ui_faint}"}
                       - button.press: btn_boost_air
                     else:
+                      - lvgl.label.update: {id: sub_air, text: "..."}
                       - button.press: btn_stop_boost
             widgets:
               - label: {id: title_air, align: CENTER, y: -8, text: "Grand Air", text_font: mont_14, text_color: "${ui_text}"}
@@ -1122,8 +1170,15 @@ lvgl:
                         float fs = id(sensor_boost_state).state;
                         return isnan(fs) || ((int) fs) == 0;
                     then:
+                      # UI optimiste (voir btn_air)
+                      - lvgl.widget.update: {id: btn_fire, bg_color: "${ui_orange}"}
+                      - lvgl.label.update: {id: title_fire, text_color: "${ui_text}"}
+                      - lvgl.label.update: {id: sub_fire, text: "...", text_color: "${ui_text}"}
+                      - lvgl.label.update: {id: title_air, text: "Annuler", text_color: "${ui_faint}"}
+                      - lvgl.label.update: {id: sub_air, text: "le cycle", text_color: "${ui_faint}"}
                       - button.press: btn_boost_fire
                     else:
+                      - lvgl.label.update: {id: sub_fire, text: "..."}
                       - button.press: btn_stop_boost
             widgets:
               - label: {id: title_fire, align: CENTER, y: -8, text: "Cheminée", text_font: mont_14, text_color: "${ui_text}"}
@@ -1151,9 +1206,11 @@ lvgl:
                     else:
                       - script.stop: ack_timeout
                       - globals.set: {id: ack_pending, value: 'false'}
-                      - button.press: btn_ack_maint
+                      # "..." le temps que la CM confirme le nouveau compteur
+                      - lvgl.label.update: {id: sub_filter, text: "..."}
                       - lvgl.label.update: {id: title_filter, text: "Filtres", text_color: "${ui_muted}"}
                       - lvgl.widget.update: {id: btn_filter, bg_color: "${ui_card}"}
+                      - button.press: btn_ack_maint
             widgets:
               - label: {id: title_filter, align: CENTER, y: -8, text: "Filtres", text_font: mont_14, text_color: "${ui_muted}"}
               - label: {id: sub_filter, align: CENTER, y: 12, text: "-- mois", text_font: mont_12, text_color: "${ui_muted}"}
@@ -1172,3 +1229,24 @@ lvgl:
             widgets:
               - label: {id: icon_power, align: CENTER, y: -9, text: "\uF011", text_font: montserrat_16, text_color: "${ui_muted}"}
               - label: {id: lbl_power, align: CENTER, y: 13, text: "OFF", text_font: mont_12, text_color: "${ui_muted}"}
+
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Frame noire de veille (anti-marquage). Dernier widget declare :
+        # au-dessus de tout, y compris du footer. Montree juste avant
+        # lvgl.pause, cachee au reveil par on_release du tactile.
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        - obj:
+            id: sleep_shield
+            x: 0
+            y: 0
+            width: 480
+            height: 480
+            hidden: true
+            bg_color: 0x000000
+            bg_opa: 100%
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            shadow_width: 0
+            scrollbar_mode: "OFF"
+            scrollable: false
