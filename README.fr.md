@@ -2,12 +2,12 @@
 
 **🇫🇷 Français** · [🇬🇧 English](README.md)
 
-![AI-Assisted](https://img.shields.io/badge/AI--assisted-Claude-D97757?logo=claude&logoColor=white)
+[![AI-Assisted](https://img.shields.io/badge/AI--assisted-Claude-D97757?logo=claude&logoColor=white)](https://claude.ai/)
 [![ESPHome](https://img.shields.io/badge/ESPHome-2026.3+-blue)](https://esphome.io/)
 [![Release](https://img.shields.io/github/v/release/loicdugay/esphome-helios-kwl)](https://github.com/loicdugay/esphome-helios-kwl/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**La commande murale de ma VMC Helios est tombée en panne. Remplacement constructeur : ~600 €.**
+**La commande murale de ma VMC Helios est tombée en panne. Remplacement constructeur : ~420 €.**
 **Ce projet la remplace par une carte tout-en-un à ~60 € — qui fait beaucoup plus.**
 
 <p align="center">
