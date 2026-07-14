@@ -1,4 +1,4 @@
-# ESPHome — Helios KWL / Vallox · Commande tactile & Home Assistant
+# ESPHome - Helios KWL / Vallox · Commande tactile & Home Assistant
 
 **🇫🇷 Français** · [🇬🇧 English](README.md)
 
@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **La commande murale de ma VMC Helios est tombée en panne. Remplacement constructeur : ~420 €.**
-**Ce projet la remplace par une carte tout-en-un à ~60 € — qui fait beaucoup plus.**
+**Ce projet la remplace par une carte tout-en-un à ~60 € - qui fait beaucoup plus.**
 
 <p align="center">
   <img src="docs/images/mockup-t-panel.png" width="440" alt="Interface tactile sur LilyGO T-Panel S3">
@@ -19,7 +19,7 @@ Un [LilyGO T-Panel S3](https://www.lilygo.cc/products/t-panel-s3) (ESP32-S3 + é
 - 🖐️ **Une commande murale tactile** complète : vitesse, modes, cycles, mesures, entretien
 - 🏠 **46 entités Home Assistant** auto-découvertes : capteurs, réglages, diagnostics, historiques
 - 🔍 **Une communication vérifiée** : chaque ordre envoyé à la VMC est relu et confirmé dans les logs
-- 💶 **Un budget de ~60 €**, sans modification de la VMC — la carte se branche en parallèle du bus existant
+- 💶 **Un budget de ~60 €**, sans modification de la VMC - la carte se branche en parallèle du bus existant
 
 > Basé sur le travail original de [Cyril Jaquier](https://github.com/lostcontrol/esphome-helios-kwl) (KWL EC 500 R), poussé jusqu'au remplacement complet de la commande d'origine : 40+ registres en lecture/écriture, cycles Cheminée/Plein Air, interface tactile, vérification d'écriture.
 
@@ -76,7 +76,7 @@ Le composant repose sur **4 primitives** strictement conformes au protocole Vall
 | Primitive | Rôle |
 |---|---|
 | `loop_read_bus()` | Écoute passive continue du bus RS485 dans `loop()`. Intercepte les broadcasts de la carte mère (températures, CO₂, etc.) et les réponses aux polls. Ne publie que les trames destinées aux télécommandes (`dst=0x20`) ou à notre adresse (`dst=0x2F`). |
-| `read_register(reg)` | Poll robuste : attend le silence bus (≥10 ms), envoie une requête READ, puis parse le **flux** de réponse — un broadcast qui s'intercale est dispatché normalement au lieu de faire échouer la lecture. 3 tentatives max (protocole §3.1). |
+| `read_register(reg)` | Poll robuste : attend le silence bus (≥10 ms), envoie une requête READ, puis parse le **flux** de réponse - un broadcast qui s'intercale est dispatché normalement au lieu de faire échouer la lecture. 3 tentatives max (protocole §3.1). |
 | `write_register(reg, val)` | Écriture protocole strict : 3 ou 4 messages selon le registre (broadcast RC → broadcast CM → direct CM, CRC doublé sur le dernier), journalisée `[CMD]`, puis **relecture de vérification** planifiée au poll suivant et journalisée `[CM] ecriture confirmee` (ou avertissement si la CM renvoie une autre valeur). |
 | `write_bit(reg, bit, state)` | Modification d'un bit unique à partir de la dernière valeur lue par les polls (comme la télécommande physique), déléguée à `write_register`. |
 
@@ -84,9 +84,9 @@ Le composant repose sur **4 primitives** strictement conformes au protocole Vall
 
 | Stratégie | Fréquence | Registres | Description |
 |---|---|---|---|
-| S1 — Passive | ~12s (broadcasts CM) | 0x2A-0x2C, 0x32-0x35 | Températures, CO₂ interceptés automatiquement |
-| S2 — Cyclique | 6s | 0x29, 0xA3, 0x08, 0x71, 0x79, 0x6D, 0x2F, 0x30 | État VMC, vitesse, humidité, boost, alarmes |
-| S3 — Config | Au boot puis toutes les heures | registres de configuration | Seuils, consignes, intervalles, modes |
+| S1 - Passive | ~12s (broadcasts CM) | 0x2A-0x2C, 0x32-0x35 | Températures, CO₂ interceptés automatiquement |
+| S2 - Cyclique | 6s | 0x29, 0xA3, 0x08, 0x71, 0x79, 0x6D, 0x2F, 0x30 | État VMC, vitesse, humidité, boost, alarmes |
+| S3 - Config | Au boot puis toutes les heures | registres de configuration | Seuils, consignes, intervalles, modes |
 | Secours températures | 60s | 0x32-0x35 | Filet de sécurité : le broadcast s'arrête quand la VMC est éteinte, alors qu'elle répond toujours aux READ |
 
 Les tables de polling sont **construites dynamiquement** : un registre n'est pollé que si une entité YAML consomme sa valeur (zéro trafic bus inutile). Alternance S2/S3 en ratio 5:1, avec un poll S3 supplémentaire par seconde pendant les 2 premières minutes après le boot (tous les réglages remontent dans HA en ~20 s). Un poll S3 en échec est re-tenté après 30 s au lieu d'attendre l'heure suivante, et chaque écriture force la relecture du registre au poll suivant.
@@ -106,7 +106,7 @@ Le référentiel complet (chaque entité, son registre, sa primitive, sa logique
 | Température air soufflé | `sensor` (°C) | Sonde NTC air pulsé | 0x35 |
 | Humidité capteur 1 | `sensor` (%) | Sonde %RH n°1 | 0x2F |
 | Humidité capteur 2 | `sensor` (%) | Sonde %RH n°2 | 0x30 |
-| Niveau CO₂ | `sensor` (ppm) | CO₂ 16 bits — *fourni commenté dans vmc.yaml (nécessite la sonde)* | 0x2B+0x2C |
+| Niveau CO₂ | `sensor` (ppm) | CO₂ 16 bits - *fourni commenté dans vmc.yaml (nécessite la sonde)* | 0x2B+0x2C |
 | Fin du cycle dans... | `sensor` (min) | Temps restant boost/cheminée | 0x79 |
 | Prochain remplacement | `sensor` (mois) | Compteur maintenance | 0xAB |
 | Code de diagnostic | `sensor` | Dernier code défaut | 0x36 |
@@ -128,7 +128,7 @@ Le référentiel complet (chaque entité, son registre, sa primitive, sa logique
 |---|---|---|
 | Auto-dégivrage | 0x08 bit 4 | Préchauffage actif |
 | Alerte Givre | 0x6D bit 7 | Gel échangeur |
-| Alerte CO₂ | 0x6D bit 6 | CO₂ > 5000 ppm — *fourni commenté dans vmc.yaml* |
+| Alerte CO₂ | 0x6D bit 6 | CO₂ > 5000 ppm - *fourni commenté dans vmc.yaml* |
 | État des filtres | 0xA3 bit 7 | Maintenance requise |
 | Appoint de chaleur | 0xA3 bit 5 | Post-chauffage LED |
 | Ventilateur soufflage | 0x08 bit 3 | ⚠️ Logique inversée |
@@ -160,7 +160,7 @@ Le référentiel complet (chaque entité, son registre, sa primitive, sa logique
 | Seuil de dégivrage | `write_register` | 0xA7 | -6 à 15°C |
 | Seuil Alerte Givre | `write_register` | 0xA8 | -6 à 15°C |
 | Hystérésis antigel | `write_register` | 0xB2 | 1-10°C |
-| Seuil CO₂ | `write_register` | 0xB3+0xB4 | 500-2000 ppm — *fourni commenté* |
+| Seuil CO₂ | `write_register` | 0xB3+0xB4 | 500-2000 ppm - *fourni commenté* |
 | Seuil Humidité | `write_register` | 0xAE | 1-99% |
 | Fréquence d'analyse | `write_bits_masked` | 0xAA bits 0-3 | 1-15 min |
 | Ajustement Soufflage | `write_register` | 0xB0 | 65-100% |
@@ -181,7 +181,7 @@ Le référentiel complet (chaque entité, son registre, sa primitive, sa logique
 |---|---|
 | Cycle Plein Air | `write_bit(0xAA,5,true)` → `write_register(0x79,45)` → `write_bit(0x71,5,true)` |
 | Cycle Cheminée | `write_bit(0xAA,5,false)` → `write_register(0x79,15)` → `write_bit(0x71,5,true)` |
-| Arrêter le cycle | `write_register(0x79, 1)` — laisse la VMC terminer naturellement en ~1 min |
+| Arrêter le cycle | `write_register(0x79, 1)` - laisse la VMC terminer naturellement en ~1 min |
 | Confirmer remplacement filtres | `read_register(0xA6)` → `write_register(0xAB, val)` |
 
 ---
@@ -200,7 +200,7 @@ Les modèles Helios KWL « ancienne génération » (sans module Ethernet intég
 
 ---
 
-## Matériel — LilyGO T-Panel S3
+## Matériel - LilyGO T-Panel S3
 
 Ce projet utilise le [LilyGO T-Panel S3](https://www.lilygo.cc/products/t-panel-s3), une carte tout-en-un qui intègre l'ESP32-S3, un écran tactile, un transceiver RS485 et 8 MB de PSRAM. Aucun composant supplémentaire n'est nécessaire.
 
@@ -268,7 +268,7 @@ ap_password: "motdepasse-fallback"
 
 **2. Adaptez les substitutions** en tête de fichier (noms des pièces des sondes d'humidité, fuseau horaire), et décommentez les entités CO₂ si votre VMC est équipée de la sonde.
 
-**3. Compilez et flashez.** Les polices sont téléchargées automatiquement à la compilation depuis leurs sources open source officielles (Montserrat via Google Fonts, symboles LVGL natifs) — aucun fichier local à installer.
+**3. Compilez et flashez.** Les polices sont téléchargées automatiquement à la compilation depuis leurs sources open source officielles (Montserrat via Google Fonts, symboles LVGL natifs) - aucun fichier local à installer.
 
 Pour intégrer le composant dans une configuration existante (sans l'écran) :
 
@@ -293,7 +293,7 @@ helios_kwl:
 
 ---
 
-## Protocole RS485 — Référence rapide
+## Protocole RS485 - Référence rapide
 
 ### Structure d'une trame (6 octets)
 
@@ -321,16 +321,16 @@ La traduction anglaise complète de la spécification est dans [`docs/vallox-dig
 |----------|----------|
 | Compilation échoue « IRAM overflow » | Ajouter les `sdkconfig_options` (voir ci-dessous) |
 | Aucune réponse de la VMC | Vérifier câblage A/B (inverser) · activer `uart: debug:` |
-| Températures incohérentes | Sonde VMC défectueuse — vérifier registre 0x36 |
+| Températures incohérentes | Sonde VMC défectueuse - vérifier registre 0x36 |
 | Écriture non confirmée (`[CM] ... la CM renvoie ...`) | Normal occasionnellement (registre volatil). Si systématique, vérifier le câblage. |
 | Fan bagote ON/OFF après extinction | Vérifier `restore_mode: RESTORE_DEFAULT_OFF` dans le YAML |
 | Bouton cycle nécessite 2 appuis | Le cycle précédent n'est peut-être pas terminé. Appuyer d'abord sur "Arrêter le cycle". |
 
 **Libérer de l'IRAM sur ESP32-S3 :**
 
-Les options Kconfig d'ESP-IDF doivent passer par `sdkconfig_options` — des
+Les options Kconfig d'ESP-IDF doivent passer par `sdkconfig_options` - des
 `-DCONFIG_*` dans `platformio_options` sont silencieusement ignorés.
-À noter : le rapport mémoire affiche toujours « IRAM 100 % », c'est normal —
+À noter : le rapport mémoire affiche toujours « IRAM 100 % », c'est normal -
 l'éditeur de liens remplit d'abord le segment IRAM dédié de 16 Ko puis
 déborde en DIRAM ; la vraie marge se lit sur la ligne DIRAM.
 
@@ -350,23 +350,23 @@ esp32:
 
 ## Crédits
 
-- **Cyril Jaquier** ([lostcontrol](https://github.com/lostcontrol/esphome-helios-kwl)) — auteur original, KWL EC 500 R
-- **loicdugay** — fork T-Panel S3, support complet lecture/écriture 40+ registres, cycles boost/cheminée, interface LVGL
-- **Abeer Ash** ([ash-abeer](https://github.com/ash-abeer)) — adaptation initiale du code original au matériel T-Panel S3 (dont le driver tactile CST3240, remplacé depuis par le composant natif ESPHome `cst226`), réalisée sur commande et sous le financement de **loicdugay**
-- **Protocole DIGIT** — documentation Vallox / Petteri Kähärä (2011) : [spécification originale (PDF, archivée dans ce dépôt)](docs/Archive/vallox-digit-protocol-rs485.pdf) · [traduction anglaise (markdown)](docs/vallox-digit-protocol-rs485.md) · [wiki FHEM Vallox](https://wiki.fhem.de/wiki/Vallox) · [copie communautaire (Symcon)](https://community.symcon.de/uploads/short-url/fp2ucSqkcPPBqQ4Lc2UWcsJr4Pn.pdf)
+- **Cyril Jaquier** ([lostcontrol](https://github.com/lostcontrol/esphome-helios-kwl)) - auteur original, KWL EC 500 R
+- **loicdugay** - fork T-Panel S3, support complet lecture/écriture 40+ registres, cycles boost/cheminée, interface LVGL
+- **Abeer Ash** ([ash-abeer](https://github.com/ash-abeer)) - adaptation initiale du code original au matériel T-Panel S3 (dont le driver tactile CST3240, remplacé depuis par le composant natif ESPHome `cst226`), réalisée sur commande et sous le financement de **loicdugay**
+- **Protocole DIGIT** - documentation Vallox / Petteri Kähärä (2011) : [spécification originale (PDF, archivée dans ce dépôt)](docs/Archive/vallox-digit-protocol-rs485.pdf) · [traduction anglaise (markdown)](docs/vallox-digit-protocol-rs485.md) · [wiki FHEM Vallox](https://wiki.fhem.de/wiki/Vallox) · [copie communautaire (Symcon)](https://community.symcon.de/uploads/short-url/fp2ucSqkcPPBqQ4Lc2UWcsJr4Pn.pdf)
 
-## ⚠️ Avertissement — utilisation à vos risques et périls
+## ⚠️ Avertissement - utilisation à vos risques et périls
 
-Ce projet est un travail communautaire **fourni « EN L'ÉTAT », sans garantie d'aucune sorte**, expresse ou implicite, y compris — sans s'y limiter — les garanties de qualité marchande, d'adéquation à un usage particulier et d'absence de contrefaçon (voir la [licence MIT](LICENSE)).
+Ce projet est un travail communautaire **fourni « EN L'ÉTAT », sans garantie d'aucune sorte**, expresse ou implicite, y compris - sans s'y limiter - les garanties de qualité marchande, d'adéquation à un usage particulier et d'absence de contrefaçon (voir la [licence MIT](LICENSE)).
 
 **En utilisant ce projet, vous reconnaissez et acceptez que :**
 
 - Vous intervenez sur un **équipement de ventilation raccordé au secteur**. Coupez toujours l'alimentation avant toute intervention sur le câblage. Faites appel à un professionnel qualifié en cas de doute.
-- L'écriture de registres non documentés par le constructeur peut **endommager votre VMC de façon irréversible** (la spécification Vallox interdit explicitement certains registres — ce composant ne les utilise pas, mais toute modification du code est sous votre responsabilité).
+- L'écriture de registres non documentés par le constructeur peut **endommager votre VMC de façon irréversible** (la spécification Vallox interdit explicitement certains registres - ce composant ne les utilise pas, mais toute modification du code est sous votre responsabilité).
 - L'utilisation de ce projet peut **annuler la garantie constructeur** de votre équipement.
 - Dans toute la mesure permise par la loi applicable, les auteurs et contributeurs **ne sauraient être tenus responsables d'aucun dommage** direct, indirect, accessoire, consécutif ou spécial (dégradation du matériel, de l'installation, perte de jouissance, frais de remplacement ou de réparation, blessure…) résultant de l'utilisation ou de l'impossibilité d'utiliser ce logiciel et la documentation associée, même s'ils ont été informés de la possibilité de tels dommages.
 - Ce projet est **indépendant** : il n'est ni affilié à, ni approuvé, ni supporté par Helios Ventilatoren, Vallox Oy ou LilyGO. Les marques citées appartiennent à leurs propriétaires respectifs.
 
 ## Licence
 
-Distribué sous licence [MIT](LICENSE). Vous êtes libre de l'utiliser, le modifier et le redistribuer, à condition de conserver la notice de copyright — et la clause d'exclusion de garantie ci-dessus en fait partie intégrante.
+Distribué sous licence [MIT](LICENSE). Vous êtes libre de l'utiliser, le modifier et le redistribuer, à condition de conserver la notice de copyright - et la clause d'exclusion de garantie ci-dessus en fait partie intégrante.
