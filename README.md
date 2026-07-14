@@ -2,12 +2,12 @@
 
 [🇫🇷 Français](README.fr.md) · **🇬🇧 English**
 
-![AI-Assisted](https://img.shields.io/badge/AI--assisted-Claude-D97757?logo=claude&logoColor=white)
+[![AI-Assisted](https://img.shields.io/badge/AI--assisted-Claude-D97757?logo=claude&logoColor=white)](https://claude.ai/)
 [![ESPHome](https://img.shields.io/badge/ESPHome-2026.3+-blue)](https://esphome.io/)
 [![Release](https://img.shields.io/github/v/release/loicdugay/esphome-helios-kwl)](https://github.com/loicdugay/esphome-helios-kwl/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**The wall controller of my Helios heat-recovery ventilation unit died. Manufacturer replacement: ~€600.**
+**The wall controller of my Helios heat-recovery ventilation unit died. Manufacturer replacement: ~€420.**
 **This project replaces it with a ~€60 all-in-one board — that does a lot more.**
 
 <p align="center">
