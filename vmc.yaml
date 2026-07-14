@@ -1042,7 +1042,9 @@ lvgl:
             text_font: mont_12
             text_color: "${ui_muted}"
 
-        # Icones d'etat (symboles natifs LVGL), flex row alignee a droite
+        # Icones d'etat (symboles natifs LVGL), positionnement absolu :
+        # chaque icone est ancree RIGHT_MID -> centrage vertical exact
+        # dans le header, espacement fixe de 31 px
         - obj:
             align: TOP_RIGHT
             x: -14
@@ -1052,18 +1054,12 @@ lvgl:
             styles: st_plain
             scrollbar_mode: "OFF"
             scrollable: false
-            layout:
-              type: FLEX
-              flex_flow: ROW
-              flex_align_main: END
-              flex_align_cross: CENTER
-              pad_column: 15
             widgets:
-              - label: {id: icon_bypass, text: "\uF074", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # bypass (LV_SYMBOL_SHUFFLE)
-              - label: {id: icon_heat,   text: "\uF0E7", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # degivrage (LV_SYMBOL_CHARGE)
-              - label: {id: icon_warn,   text: "\uF071", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # defaut (LV_SYMBOL_WARNING)
-              - label: {id: icon_maint,  text: "\uF013", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # filtres (LV_SYMBOL_SETTINGS)
-              - label: {id: icon_wifi,   text: "\uF1EB", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # wifi (LV_SYMBOL_WIFI)
+              - label: {id: icon_bypass, align: RIGHT_MID, x: -124, text: "\uF074", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # bypass (LV_SYMBOL_SHUFFLE)
+              - label: {id: icon_heat,   align: RIGHT_MID, x: -93,  text: "\uF0E7", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # degivrage (LV_SYMBOL_CHARGE)
+              - label: {id: icon_warn,   align: RIGHT_MID, x: -62,  text: "\uF071", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # defaut (LV_SYMBOL_WARNING)
+              - label: {id: icon_maint,  align: RIGHT_MID, x: -31,  text: "\uF013", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # filtres (LV_SYMBOL_SETTINGS)
+              - label: {id: icon_wifi,   align: RIGHT_MID, x: 0,    text: "\uF1EB", text_font: montserrat_16, text_color: "${ui_muted}", text_opa: 20%}   # wifi (LV_SYMBOL_WIFI)
 
         # Separateur 1px sous le header
         - line:
