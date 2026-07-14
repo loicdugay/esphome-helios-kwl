@@ -32,9 +32,9 @@ Le composant repose sur **4 primitives** de communication strictement conformes 
 | Primitive | Rôle |
 |---|---|
 | `loop_read_bus()` | Écoute passive continue du bus RS485 dans `loop()`. Intercepte les broadcasts de la carte mère (températures, CO₂, etc.) et les réponses aux polls. Ne publie que les trames destinées aux télécommandes (`dst=0x20`) ou à notre adresse (`dst=0x2F`). |
-| `read_register(reg)` | Poll synchrone : attend le silence bus (≥10ms sans activité UART), envoie une requête READ, attend la réponse 50ms max de façon non-bloquante. |
-| `write_register(reg, val)` | Écriture protocole strict : envoie les 3 messages obligatoires (broadcast RC → broadcast CM → direct CM avec CRC doublé), attend 100ms, vérifie par `read_register`, retry 1× si échec. |
-| `write_bit(reg, bit, state)` | Modification d'un bit unique : `read_register` frais → modifie le bit → `write_register`. Jamais de cache stale. |
+| `read_register(reg)` | Poll robuste : attend le silence bus (≥10 ms), envoie une requête READ, puis parse le **flux** de réponse — un broadcast qui s'intercale est dispatché normalement au lieu de faire échouer la lecture. 3 tentatives max (protocole §3.1). |
+| `write_register(reg, val)` | Écriture protocole strict : 3 ou 4 messages selon le registre (broadcast RC → broadcast CM → direct CM, CRC doublé sur le dernier), journalisée `[CMD]`, puis **relecture de vérification** planifiée au poll suivant et journalisée `[CM] ecriture confirmee` (ou avertissement si la CM renvoie une autre valeur). |
+| `write_bit(reg, bit, state)` | Modification d'un bit unique à partir de la dernière valeur lue par les polls (comme la télécommande physique), déléguée à `write_register`. |
 
 **Stratégies de polling :**
 
@@ -42,9 +42,10 @@ Le composant repose sur **4 primitives** de communication strictement conformes 
 |---|---|---|---|
 | S1 — Passive | ~12s (broadcasts CM) | 0x2A-0x2C, 0x32-0x35 | Températures, CO₂ interceptés automatiquement |
 | S2 — Cyclique | 6s | 0x29, 0xA3, 0x08, 0x71, 0x79, 0x6D, 0x2F, 0x30 | État VMC, vitesse, humidité, boost, alarmes |
-| S3 — Init + 1h | Au boot puis toutes les heures | 21 registres config | Seuils, consignes, intervalles, modes |
+| S3 — Config | Au boot puis toutes les heures | registres de configuration | Seuils, consignes, intervalles, modes |
+| Secours températures | 60s | 0x32-0x35 | Filet de sécurité : le broadcast s'arrête quand la VMC est éteinte, alors qu'elle répond toujours aux READ |
 
-L'alternance S2/S3 utilise un ratio 5:1 (5 cycles S2 puis 1 cycle S3) pour garantir que les registres de configuration soient tous lus dans les ~2 minutes après le boot.
+Les tables de polling sont **construites dynamiquement** : un registre n'est pollé que si une entité YAML consomme sa valeur (zéro trafic bus inutile). Alternance S2/S3 en ratio 5:1, avec un poll S3 supplémentaire par seconde pendant les 2 premières minutes après le boot (tous les réglages remontent dans HA en ~20 s). Un poll S3 en échec est re-tenté après 30 s au lieu d'attendre l'heure suivante, et chaque écriture force la relecture du registre au poll suivant.
 
 ### Entités Home Assistant
 
@@ -59,7 +60,7 @@ L'alternance S2/S3 utilise un ratio 5:1 (5 cycles S2 puis 1 cycle S3) pour garan
 | Température air soufflé | `sensor` (°C) | Sonde NTC air pulsé | 0x35 |
 | Humidité capteur 1 | `sensor` (%) | Sonde %RH n°1 | 0x2F |
 | Humidité capteur 2 | `sensor` (%) | Sonde %RH n°2 | 0x30 |
-| Niveau CO₂ | `sensor` (ppm) | CO₂ 16 bits | 0x2B+0x2C |
+| Niveau CO₂ | `sensor` (ppm) | CO₂ 16 bits — *fourni commenté dans vmc.yaml (nécessite la sonde)* | 0x2B+0x2C |
 | Fin du cycle dans... | `sensor` (min) | Temps restant boost/cheminée | 0x79 |
 | Prochain remplacement | `sensor` (mois) | Compteur maintenance | 0xAB |
 | Code de diagnostic | `sensor` | Dernier code défaut | 0x36 |
@@ -81,7 +82,7 @@ L'alternance S2/S3 utilise un ratio 5:1 (5 cycles S2 puis 1 cycle S3) pour garan
 |---|---|---|
 | Auto-dégivrage | 0x08 bit 4 | Préchauffage actif |
 | Alerte Givre | 0x6D bit 7 | Gel échangeur |
-| Alerte CO₂ | 0x6D bit 6 | CO₂ > 5000 ppm |
+| Alerte CO₂ | 0x6D bit 6 | CO₂ > 5000 ppm — *fourni commenté dans vmc.yaml* |
 | État des filtres | 0xA3 bit 7 | Maintenance requise |
 | Appoint de chaleur | 0xA3 bit 5 | Post-chauffage LED |
 | Ventilateur soufflage | 0x08 bit 3 | ⚠️ Logique inversée |
@@ -113,7 +114,7 @@ L'alternance S2/S3 utilise un ratio 5:1 (5 cycles S2 puis 1 cycle S3) pour garan
 | Seuil de dégivrage | `write_register` | 0xA7 | -6 à 15°C |
 | Seuil Alerte Givre | `write_register` | 0xA8 | -6 à 15°C |
 | Hystérésis antigel | `write_register` | 0xB2 | 1-10°C |
-| Seuil CO₂ | `write_register` | 0xB3+0xB4 | 500-2000 ppm |
+| Seuil CO₂ | `write_register` | 0xB3+0xB4 | 500-2000 ppm — *fourni commenté* |
 | Seuil Humidité | `write_register` | 0xAE | 1-99% |
 | Fréquence d'analyse | `write_bits_masked` | 0xAA bits 0-3 | 1-15 min |
 | Ajustement Soufflage | `write_register` | 0xB0 | 65-100% |
@@ -224,7 +225,13 @@ helios_kwl:
 
 ### 4. Configuration complète
 
-Le fichier [`vmc.yaml`](vmc.yaml) contient un exemple complet et fonctionnel incluant les 14 sensors, 9 binary_sensors, 3 switches, 12 numbers, 3 selects, 4 buttons, 3 text_sensors, 1 fan, l'interface LVGL avec arc de vitesse et grille de données, et la gestion du rétroéclairage.
+Le fichier [`vmc.yaml`](vmc.yaml) est un exemple complet et fonctionnel pour le T-Panel S3, organisé en 9 sections numérotées lisibles de haut en bas. Il expose l'ensemble des entités Home Assistant (fan, sensors, binary_sensors, switches, numbers, selects, buttons — les entités CO₂ sont fournies commentées pour les VMC équipées de la sonde) et embarque une **interface tactile complète** :
+
+- **Header** — heure, date française complète, icônes d'état (bypass, dégivrage, défaut, filtres, Wi-Fi modulé par la puissance du signal)
+- **Arc de vitesse 0-8** avec knob tactile (zone de toucher limitée à l'anneau), pastille de mode Normal/Air frais et pastilles de régulation HR%/CO2 — les couleurs de tout l'écran suivent le mode actif (orange = hiver, cyan = été)
+- **Grille de mesures** (Intérieur, Soufflé, Cuisine, SdB) avec micro-barres de progression et **échelle de couleurs de confort** ADEME/ARS (température 19-26 °C et humidité 40-60 % = zone verte)
+- **Footer** — cycles Grand Air/Cheminée exclusifs avec compte à rebours et bouton Annuler, reset filtres à double confirmation (30 s), interrupteur ON/OFF avec voile d'extinction
+- **UI optimiste** (l'état demandé s'affiche immédiatement, la relecture CM réconcilie en 1-2 s) et **veille anti-marquage LCD** après 5 min d'inactivité (frame noire + rétroéclairage coupé + rendu LVGL en pause, réveil au toucher absorbé)
 
 **Avant de l'utiliser**, créez un fichier `secrets.yaml` :
 ```yaml
@@ -236,8 +243,9 @@ ap_password: "motdepasse-fallback"
 ```
 
 Les polices sont téléchargées automatiquement à la compilation depuis leurs sources officielles open source (aucun fichier local à installer) :
-- Roboto Condensed via [Google Fonts](https://fonts.google.com/specimen/Roboto+Condensed) (`gfonts://`)
-- [Material Design Icons](https://github.com/Templarian/MaterialDesign-Webfont) via le dépôt officiel Templarian
+- Montserrat via [Google Fonts](https://fonts.google.com/specimen/Montserrat) (`gfonts://`), glyphes limités au nécessaire + accents français complets
+- Symboles natifs LVGL (polices `montserrat_XX` intégrées) pour les icônes d'état
+- Un unique glyphe [Material Design Icons](https://github.com/Templarian/MaterialDesign-Webfont) (horloge du header, absente des symboles LVGL)
 
 ---
 
