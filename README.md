@@ -7,6 +7,14 @@ Composant ESPHome externe pour piloter les VMC double flux **Helios KWL** et **V
 
 > Basé sur le travail original de [Cyril Jaquier](https://github.com/lostcontrol/esphome-helios-kwl) (KWL EC 500 R). Ce fork ajoute le support complet en lecture et écriture de 40+ registres, la gestion des cycles Cheminée et Plein Air, l'écran tactile du LilyGO T-Panel S3, et une architecture protocole conforme à la spécification Vallox DIGIT.
 
+## Aperçu de l'interface (LilyGO T-Panel S3, 480×480)
+
+| Normal (hiver) | Air frais (été) | Cycle Grand Air | VMC éteinte |
+|:---:|:---:|:---:|:---:|
+| ![Mode Normal](docs/images/ui-normal.png) | ![Mode Air frais](docs/images/ui-air-frais.png) | ![Cycle en cours](docs/images/ui-cycle-grand-air.png) | ![Veille OFF](docs/images/ui-eteinte.png) |
+
+*Captures générées par le simulateur PC [`vmc-preview.yaml`](vmc-preview.yaml) — pixels identiques à la dalle.*
+
 ---
 
 ## Modèles compatibles
@@ -246,6 +254,19 @@ Les polices sont téléchargées automatiquement à la compilation depuis leurs 
 - Montserrat via [Google Fonts](https://fonts.google.com/specimen/Montserrat) (`gfonts://`), glyphes limités au nécessaire + accents français complets
 - Symboles natifs LVGL (polices `montserrat_XX` intégrées) pour les icônes d'état
 - Un unique glyphe [Material Design Icons](https://github.com/Templarian/MaterialDesign-Webfont) (horloge du header, absente des symboles LVGL)
+
+### 5. Simulateur PC (captures d'écran & développement UI)
+
+Le fichier [`vmc-preview.yaml`](vmc-preview.yaml) fait tourner **la même interface** dans une fenêtre 480×480 sur votre ordinateur (souris = doigt), sans matériel : idéal pour itérer sur l'UI ou produire des captures d'écran. Un sélecteur de scénarios de démonstration (été, hiver, cycle actif, alerte, extinction…) permet de mettre en scène chaque état, et les boutons sont fonctionnels (compte à rebours animé).
+
+```bash
+# Une seule fois : SDL2 + ESPHome local
+sudo apt install libsdl2-dev        # macOS : brew install sdl2 · Windows : via WSL2
+python3 -m venv venv && venv/bin/pip install esphome
+
+# Lancer le simulateur
+venv/bin/esphome run vmc-preview.yaml
+```
 
 ---
 
