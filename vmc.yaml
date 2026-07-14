@@ -403,6 +403,7 @@ script:
             - lvgl.widget.update: {id: mode_pill, bg_color: "${ui_orange}"}
             - lvgl.label.update: {id: mode_lbl, text: "Normal", text_color: "${ui_orange}"}
             - lvgl.label.update: {id: icon_bypass, text_color: "${ui_muted}", text_opa: 20%}
+      - script.execute: ui_apply_regul
 
   # Etat des boutons de cycle : 0 = repos, 1 = Grand Air actif, 2 = Cheminee
   # actif. Le bouton actif = orange + compte a rebours + micro-barre ; le
@@ -472,15 +473,22 @@ script:
   # Pastilles de regulation intelligente (sous l'arc) : HR = pilotage par
   # l'humidite, CO2 = pilotage par le CO2. Active = teinte pleine,
   # inactive = estompee.
-  # Actif = fond plein colore + texte sombre (contraste maximal),
-  # inactif = carte sombre + texte estompe.
+  # Pastilles HR%/CO2 : actives = couleur du mode en cours (orange en
+  # Normal/hiver, cyan en Air frais/ete) avec texte sombre ; inactives =
+  # carte sombre + texte estompe. Rappele par ui_apply_mode a chaque
+  # changement de mode pour rester synchrone.
   - id: ui_apply_regul
     then:
       - if:
           condition:
             switch.is_on: sw_hum_reg
           then:
-            - lvgl.widget.update: {id: chip_hr, bg_color: "${ui_blue}", bg_opa: 100%}
+            - if:
+                condition: {switch.is_on: sw_summer}
+                then:
+                  - lvgl.widget.update: {id: chip_hr, bg_color: "${ui_cyan}", bg_opa: 100%}
+                else:
+                  - lvgl.widget.update: {id: chip_hr, bg_color: "${ui_orange}", bg_opa: 100%}
             - lvgl.label.update: {id: chip_hr_lbl, text_color: "${ui_bg}"}
           else:
             - lvgl.widget.update: {id: chip_hr, bg_color: "${ui_card}", bg_opa: 100%}
@@ -489,7 +497,12 @@ script:
           condition:
             switch.is_on: sw_co2_reg
           then:
-            - lvgl.widget.update: {id: chip_co2, bg_color: "${ui_green}", bg_opa: 100%}
+            - if:
+                condition: {switch.is_on: sw_summer}
+                then:
+                  - lvgl.widget.update: {id: chip_co2, bg_color: "${ui_cyan}", bg_opa: 100%}
+                else:
+                  - lvgl.widget.update: {id: chip_co2, bg_color: "${ui_orange}", bg_opa: 100%}
             - lvgl.label.update: {id: chip_co2_lbl, text_color: "${ui_bg}"}
           else:
             - lvgl.widget.update: {id: chip_co2, bg_color: "${ui_card}", bg_opa: 100%}
@@ -605,12 +618,21 @@ sensor:
         - exponential_moving_average: {alpha: 0.3, send_every: 3, send_first_at: 1}
       on_value:
         then:
+          # Couleur = confort thermique (echelle ADEME/ARS, voir commentaire
+          # du script ui_apply_regul) ; plage de barre re-imposee a 0-40
           - lvgl.label.update:
               id: val_int
               text: !lambda 'char b[8]; snprintf(b, sizeof(b), "%.0f°", x); return std::string(b);'
+              text_color: !lambda 'uint32_t c = x < 16 ? 0x60A5FA : x < 19 ? 0x06B6D4 : x <= 26 ? 0x10B981 : x <= 28 ? 0xFBBF24 : 0xEF4444; return lv_color_hex(c);'
           - lvgl.bar.update:
               id: bar_int
+              min_value: 0
+              max_value: 40
               value: !lambda 'return std::max(0, std::min(40, (int) x));'
+          - lvgl.widget.update:
+              id: bar_int
+              indicator:
+                bg_color: !lambda 'uint32_t c = x < 16 ? 0x60A5FA : x < 19 ? 0x06B6D4 : x <= 26 ? 0x10B981 : x <= 28 ? 0xFBBF24 : 0xEF4444; return lv_color_hex(c);'
 
     temperature_supply:
       name: ${name_temp_supply}
@@ -619,12 +641,21 @@ sensor:
         - exponential_moving_average: {alpha: 0.3, send_every: 3, send_first_at: 1}
       on_value:
         then:
+          # Couleur = confort thermique (echelle ADEME/ARS, voir commentaire
+          # du script ui_apply_regul) ; plage de barre re-imposee a 0-40
           - lvgl.label.update:
               id: val_sup
               text: !lambda 'char b[8]; snprintf(b, sizeof(b), "%.0f°", x); return std::string(b);'
+              text_color: !lambda 'uint32_t c = x < 16 ? 0x60A5FA : x < 19 ? 0x06B6D4 : x <= 26 ? 0x10B981 : x <= 28 ? 0xFBBF24 : 0xEF4444; return lv_color_hex(c);'
           - lvgl.bar.update:
               id: bar_sup
+              min_value: 0
+              max_value: 40
               value: !lambda 'return std::max(0, std::min(40, (int) x));'
+          - lvgl.widget.update:
+              id: bar_sup
+              indicator:
+                bg_color: !lambda 'uint32_t c = x < 16 ? 0x60A5FA : x < 19 ? 0x06B6D4 : x <= 26 ? 0x10B981 : x <= 28 ? 0xFBBF24 : 0xEF4444; return lv_color_hex(c);'
 
     humidity_sensor1:
       name: ${name_humidity1}
@@ -633,12 +664,20 @@ sensor:
         - exponential_moving_average: {alpha: 0.3, send_every: 3, send_first_at: 1}
       on_value:
         then:
+          # Couleur = confort hygrometrique (40-60 % = zone verte)
           - lvgl.label.update:
               id: val_sdb
               text: !lambda 'char b[8]; snprintf(b, sizeof(b), "%.0f%%", x); return std::string(b);'
+              text_color: !lambda 'uint32_t c = x < 30 ? 0xF97316 : x < 40 ? 0xFBBF24 : x <= 60 ? 0x10B981 : x <= 70 ? 0x06B6D4 : 0x60A5FA; return lv_color_hex(c);'
           - lvgl.bar.update:
               id: bar_sdb
+              min_value: 0
+              max_value: 100
               value: !lambda 'return std::max(0, std::min(100, (int) x));'
+          - lvgl.widget.update:
+              id: bar_sdb
+              indicator:
+                bg_color: !lambda 'uint32_t c = x < 30 ? 0xF97316 : x < 40 ? 0xFBBF24 : x <= 60 ? 0x10B981 : x <= 70 ? 0x06B6D4 : 0x60A5FA; return lv_color_hex(c);'
 
     humidity_sensor2:
       name: ${name_humidity2}
@@ -647,12 +686,20 @@ sensor:
         - exponential_moving_average: {alpha: 0.3, send_every: 3, send_first_at: 1}
       on_value:
         then:
+          # Couleur = confort hygrometrique (40-60 % = zone verte)
           - lvgl.label.update:
               id: val_cui
               text: !lambda 'char b[8]; snprintf(b, sizeof(b), "%.0f%%", x); return std::string(b);'
+              text_color: !lambda 'uint32_t c = x < 30 ? 0xF97316 : x < 40 ? 0xFBBF24 : x <= 60 ? 0x10B981 : x <= 70 ? 0x06B6D4 : 0x60A5FA; return lv_color_hex(c);'
           - lvgl.bar.update:
               id: bar_cui
+              min_value: 0
+              max_value: 100
               value: !lambda 'return std::max(0, std::min(100, (int) x));'
+          - lvgl.widget.update:
+              id: bar_cui
+              indicator:
+                bg_color: !lambda 'uint32_t c = x < 30 ? 0xF97316 : x < 40 ? 0xFBBF24 : x <= 60 ? 0x10B981 : x <= 70 ? 0x06B6D4 : 0x60A5FA; return lv_color_hex(c);'
 
     # Decommenter si un capteur CO2 est installe sur la VMC
     # co2_concentration:
@@ -999,9 +1046,9 @@ lvgl:
         - obj:
             align: TOP_RIGHT
             x: -14
-            y: 8
+            y: 0
             width: 170
-            height: 30
+            height: 46
             styles: st_plain
             scrollbar_mode: "OFF"
             scrollable: false
@@ -1127,10 +1174,10 @@ lvgl:
         - button:
             id: chip_hr
             align: TOP_MID
-            x: -80
-            y: 272
-            width: 64
-            height: 30
+            x: -48
+            y: 280
+            width: 60
+            height: 28
             bg_color: "${ui_card}"
             border_width: 1
             border_color: "${ui_line}"
@@ -1144,17 +1191,17 @@ lvgl:
               - label:
                   id: chip_hr_lbl
                   align: CENTER
-                  text: "HR"
+                  text: "HR%"
                   text_font: mont_12
                   text_color: "${ui_faint}"
 
         - button:
             id: chip_co2
             align: TOP_MID
-            x: 80
-            y: 272
-            width: 64
-            height: 30
+            x: 48
+            y: 280
+            width: 60
+            height: 28
             bg_color: "${ui_card}"
             border_width: 1
             border_color: "${ui_line}"
@@ -1190,16 +1237,16 @@ lvgl:
         - label: {x: 355, y: 326, text: "SDB",       text_font: mont_12, text_color: "${ui_faint}"}
 
         # Valeurs
-        - label: {id: val_int, x: 22,  y: 344, text: "--°", text_font: mont_18, text_color: "${ui_green}"}
-        - label: {id: val_sup, x: 133, y: 344, text: "--°", text_font: mont_18, text_color: "${ui_amber}"}
-        - label: {id: val_cui, x: 244, y: 344, text: "--%", text_font: mont_18, text_color: "${ui_cyan}"}
-        - label: {id: val_sdb, x: 355, y: 344, text: "--%", text_font: mont_18, text_color: "${ui_blue}"}
+        - label: {id: val_int, x: 22,  y: 344, text: "--°", text_font: mont_18, text_color: "${ui_muted}"}
+        - label: {id: val_sup, x: 133, y: 344, text: "--°", text_font: mont_18, text_color: "${ui_muted}"}
+        - label: {id: val_cui, x: 244, y: 344, text: "--%", text_font: mont_18, text_color: "${ui_muted}"}
+        - label: {id: val_sdb, x: 355, y: 344, text: "--%", text_font: mont_18, text_color: "${ui_muted}"}
 
         # Micro-barres (temperatures sur 0-40°C, humidites sur 0-100%)
-        - bar: {id: bar_int, x: 22,  y: 372, width: 105, height: 4, min_value: 0, max_value: 40,  value: 0, bg_color: "${ui_card}", radius: 2, indicator: {bg_color: "${ui_green}", bg_opa: 80%, radius: 2}}
-        - bar: {id: bar_sup, x: 133, y: 372, width: 105, height: 4, min_value: 0, max_value: 40,  value: 0, bg_color: "${ui_card}", radius: 2, indicator: {bg_color: "${ui_amber}", bg_opa: 80%, radius: 2}}
-        - bar: {id: bar_cui, x: 244, y: 372, width: 105, height: 4, min_value: 0, max_value: 100, value: 0, bg_color: "${ui_card}", radius: 2, indicator: {bg_color: "${ui_cyan}", bg_opa: 80%, radius: 2}}
-        - bar: {id: bar_sdb, x: 355, y: 372, width: 105, height: 4, min_value: 0, max_value: 100, value: 0, bg_color: "${ui_card}", radius: 2, indicator: {bg_color: "${ui_blue}", bg_opa: 80%, radius: 2}}
+        - bar: {id: bar_int, x: 22,  y: 372, width: 105, height: 4, min_value: 0, max_value: 40,  value: 0, bg_color: "${ui_line}", bg_opa: 100%, radius: 2, indicator: {bg_color: "${ui_green}", bg_opa: 80%, radius: 2}}
+        - bar: {id: bar_sup, x: 133, y: 372, width: 105, height: 4, min_value: 0, max_value: 40,  value: 0, bg_color: "${ui_line}", bg_opa: 100%, radius: 2, indicator: {bg_color: "${ui_amber}", bg_opa: 80%, radius: 2}}
+        - bar: {id: bar_cui, x: 244, y: 372, width: 105, height: 4, min_value: 0, max_value: 100, value: 0, bg_color: "${ui_line}", bg_opa: 100%, radius: 2, indicator: {bg_color: "${ui_cyan}", bg_opa: 80%, radius: 2}}
+        - bar: {id: bar_sdb, x: 355, y: 372, width: 105, height: 4, min_value: 0, max_value: 100, value: 0, bg_color: "${ui_line}", bg_opa: 100%, radius: 2, indicator: {bg_color: "${ui_blue}", bg_opa: 80%, radius: 2}}
 
         # Ligne secondaire (air entrant / air rejete)
         - label: {id: lbl_out, x: 22,  y: 388, width: 220, text: "Extérieur  --°", text_align: CENTER, text_font: mont_12, text_color: "${ui_muted}"}
