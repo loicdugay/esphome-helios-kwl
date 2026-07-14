@@ -167,9 +167,7 @@ external_components:
       type: git
       url: https://github.com/loicdugay/esphome-helios-kwl/
     components: [helios_kwl]
-    # 0s force le re-clone a chaque compilation : indispensable tant que le
-    # composant evolue. Passer a 1d une fois le composant stabilise.
-    refresh: 0s
+    refresh: 1d
 
 uart:
   id: uart_bus
@@ -1385,11 +1383,11 @@ lvgl:
               - label: {id: icon_power, align: CENTER, y: -9, text: "\uF011", text_font: montserrat_16, text_color: "${ui_muted}"}
               - label: {id: lbl_power, align: CENTER, y: 13, text: "OFF", text_font: mont_12, text_color: "${ui_muted}"}
 
-        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ────────────────────────────────────────────────────
         # Frame noire de veille (anti-marquage). Dernier widget declare :
         # au-dessus de tout, y compris du footer. Montree juste avant
         # lvgl.pause, cachee au reveil par on_release du tactile.
-        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ────────────────────────────────────────────────────
         - obj:
             id: sleep_shield
             x: 0
