@@ -1,4 +1,4 @@
-# ESPHome — Helios KWL / Vallox · Touch controller & Home Assistant
+# ESPHome - Helios KWL / Vallox · Touch controller & Home Assistant
 
 [🇫🇷 Français](README.fr.md) · **🇬🇧 English**
 
@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **The wall controller of my Helios heat-recovery ventilation unit died. Manufacturer replacement: ~€420.**
-**This project replaces it with a ~€60 all-in-one board — that does a lot more.**
+**This project replaces it with a ~€60 all-in-one board - that does a lot more.**
 
 <p align="center">
   <img src="docs/images/mockup-t-panel.png" width="440" alt="Touch interface on LilyGO T-Panel S3">
@@ -19,7 +19,7 @@ One [LilyGO T-Panel S3](https://www.lilygo.cc/products/t-panel-s3) (ESP32-S3 + 4
 - 🖐️ **A complete touch wall controller**: speed, modes, cycles, measurements, maintenance
 - 🏠 **46 auto-discovered Home Assistant entities**: sensors, settings, diagnostics, history
 - 🔍 **Verified communication**: every command sent to the unit is read back and confirmed in the logs
-- 💶 **A ~€60 budget**, with no modification to the ventilation unit — the board plugs in parallel on the existing bus
+- 💶 **A ~€60 budget**, with no modification to the ventilation unit - the board plugs in parallel on the existing bus
 
 > Based on the original work of [Cyril Jaquier](https://github.com/lostcontrol/esphome-helios-kwl) (KWL EC 500 R), taken all the way to a full replacement of the original controller: 40+ registers in read/write, Fireplace/Boost cycles, touch interface, write verification.
 
@@ -78,7 +78,7 @@ The component is built on **4 primitives**, strictly compliant with the Vallox D
 | Primitive | Role |
 |---|---|
 | `loop_read_bus()` | Continuous passive listening of the RS485 bus in `loop()`. Intercepts mainboard broadcasts (temperatures, CO₂, …) and poll responses. Only publishes frames addressed to remote controls (`dst=0x20`) or to our address (`dst=0x2F`). |
-| `read_register(reg)` | Robust poll: waits for bus silence (≥10 ms), sends a READ request, then parses the response **stream** — an interleaved broadcast is dispatched normally instead of failing the read. 3 attempts max (protocol §3.1). |
+| `read_register(reg)` | Robust poll: waits for bus silence (≥10 ms), sends a READ request, then parses the response **stream** - an interleaved broadcast is dispatched normally instead of failing the read. 3 attempts max (protocol §3.1). |
 | `write_register(reg, val)` | Strict protocol write: 3 or 4 messages depending on the register (RC broadcast → mainboard broadcast → direct mainboard, doubled CRC on the last one), logged as `[CMD]`, then a **verification read-back** is scheduled on the next poll and logged as `[CM] ecriture confirmee` (or a warning if the mainboard returns a different value). |
 | `write_bit(reg, bit, state)` | Single-bit modification based on the latest polled value (just like the physical remote), delegated to `write_register`. |
 
@@ -86,9 +86,9 @@ The component is built on **4 primitives**, strictly compliant with the Vallox D
 
 | Strategy | Frequency | Registers | Description |
 |---|---|---|---|
-| S1 — Passive | ~12s (mainboard broadcasts) | 0x2A-0x2C, 0x32-0x35 | Temperatures and CO₂ intercepted automatically |
-| S2 — Cyclic | 6s | 0x29, 0xA3, 0x08, 0x71, 0x79, 0x6D, 0x2F, 0x30 | Unit state, speed, humidity, boost, alarms |
-| S3 — Config | At boot then hourly | configuration registers | Setpoints, thresholds, intervals, modes |
+| S1 - Passive | ~12s (mainboard broadcasts) | 0x2A-0x2C, 0x32-0x35 | Temperatures and CO₂ intercepted automatically |
+| S2 - Cyclic | 6s | 0x29, 0xA3, 0x08, 0x71, 0x79, 0x6D, 0x2F, 0x30 | Unit state, speed, humidity, boost, alarms |
+| S3 - Config | At boot then hourly | configuration registers | Setpoints, thresholds, intervals, modes |
 | Temperature fallback | 60s | 0x32-0x35 | Safety net: broadcasts stop when the unit is off, while it still answers READs |
 
 Polling tables are **built dynamically**: a register is only polled if a YAML entity consumes its value (zero useless bus traffic). S2/S3 alternate at a 5:1 ratio, with one extra S3 poll per second during the first 2 minutes after boot (all settings reach HA in ~20 s). A failed S3 poll is retried after 30 s instead of waiting for the next hour, and every write forces a read-back of the register on the next poll.
@@ -108,7 +108,7 @@ The full reference (every entity, its register, primitive and logic) is document
 | Température air soufflé | `sensor` (°C) | Supply air NTC probe | 0x35 |
 | Humidité capteur 1 | `sensor` (%) | %RH probe #1 | 0x2F |
 | Humidité capteur 2 | `sensor` (%) | %RH probe #2 | 0x30 |
-| Niveau CO₂ | `sensor` (ppm) | 16-bit CO₂ — *shipped commented out in vmc.yaml (requires the sensor)* | 0x2B+0x2C |
+| Niveau CO₂ | `sensor` (ppm) | 16-bit CO₂ - *shipped commented out in vmc.yaml (requires the sensor)* | 0x2B+0x2C |
 | Fin du cycle dans... | `sensor` (min) | Boost/fireplace time remaining | 0x79 |
 | Prochain remplacement | `sensor` (months) | Maintenance countdown | 0xAB |
 | Code de diagnostic | `sensor` | Last fault code | 0x36 |
@@ -130,7 +130,7 @@ The full reference (every entity, its register, primitive and logic) is document
 |---|---|---|
 | Auto-dégivrage | 0x08 bit 4 | Preheating active |
 | Alerte Givre | 0x6D bit 7 | Heat exchanger freeze risk |
-| Alerte CO₂ | 0x6D bit 6 | CO₂ > 5000 ppm — *shipped commented out in vmc.yaml* |
+| Alerte CO₂ | 0x6D bit 6 | CO₂ > 5000 ppm - *shipped commented out in vmc.yaml* |
 | État des filtres | 0xA3 bit 7 | Maintenance required |
 | Appoint de chaleur | 0xA3 bit 5 | Post-heating LED |
 | Ventilateur soufflage | 0x08 bit 3 | ⚠️ Inverted logic |
@@ -162,7 +162,7 @@ The full reference (every entity, its register, primitive and logic) is document
 | Seuil de dégivrage | `write_register` | 0xA7 | -6 to 15°C |
 | Seuil Alerte Givre | `write_register` | 0xA8 | -6 to 15°C |
 | Hystérésis antigel | `write_register` | 0xB2 | 1-10°C |
-| Seuil CO₂ | `write_register` | 0xB3+0xB4 | 500-2000 ppm — *shipped commented out* |
+| Seuil CO₂ | `write_register` | 0xB3+0xB4 | 500-2000 ppm - *shipped commented out* |
 | Seuil Humidité | `write_register` | 0xAE | 1-99% |
 | Fréquence d'analyse | `write_bits_masked` | 0xAA bits 0-3 | 1-15 min |
 | Ajustement Soufflage | `write_register` | 0xB0 | 65-100% |
@@ -183,7 +183,7 @@ The full reference (every entity, its register, primitive and logic) is document
 |---|---|
 | Cycle Plein Air | `write_bit(0xAA,5,true)` → `write_register(0x79,45)` → `write_bit(0x71,5,true)` |
 | Cycle Cheminée | `write_bit(0xAA,5,false)` → `write_register(0x79,15)` → `write_bit(0x71,5,true)` |
-| Arrêter le cycle | `write_register(0x79, 1)` — lets the unit finish naturally in ~1 min |
+| Arrêter le cycle | `write_register(0x79, 1)` - lets the unit finish naturally in ~1 min |
 | Confirmer remplacement filtres | `read_register(0xA6)` → `write_register(0xAB, val)` |
 
 ---
@@ -202,7 +202,7 @@ All "previous generation" Helios KWL models (without built-in Ethernet) are comp
 
 ---
 
-## Hardware — LilyGO T-Panel S3
+## Hardware - LilyGO T-Panel S3
 
 This project uses the [LilyGO T-Panel S3](https://www.lilygo.cc/products/t-panel-s3), an all-in-one board with the ESP32-S3, a touch screen, an RS485 transceiver and 8 MB of PSRAM. No extra components required.
 
@@ -270,7 +270,7 @@ ap_password: "fallback-password"
 
 **2. Adjust the substitutions** at the top of the file (humidity probe room names, timezone), and uncomment the CO₂ entities if your unit has the sensor.
 
-**3. Compile and flash.** Fonts are downloaded automatically at compile time from their official open-source origins (Montserrat via Google Fonts, native LVGL symbols) — no local files to install.
+**3. Compile and flash.** Fonts are downloaded automatically at compile time from their official open-source origins (Montserrat via Google Fonts, native LVGL symbols) - no local files to install.
 
 To integrate the component into an existing configuration (without the screen):
 
@@ -295,7 +295,7 @@ helios_kwl:
 
 ---
 
-## RS485 protocol — quick reference
+## RS485 protocol - quick reference
 
 ### Frame structure (6 bytes)
 
@@ -323,16 +323,16 @@ The full English translation of the specification lives in [`docs/vallox-digit-p
 |----------|----------|
 | Build fails with "IRAM overflow" | Add the `sdkconfig_options` (see below) |
 | No response from the unit | Check A/B wiring (swap them) · enable `uart: debug:` |
-| Inconsistent temperatures | Faulty unit probe — check register 0x36 |
+| Inconsistent temperatures | Faulty unit probe - check register 0x36 |
 | Write not confirmed (`[CM] ... la CM renvoie ...`) | Occasionally normal (volatile register). If systematic, check the wiring. |
 | Fan flapping ON/OFF after power-off | Check `restore_mode: RESTORE_DEFAULT_OFF` in the YAML |
 | Cycle button needs 2 presses | The previous cycle may not be finished. Press "Arrêter le cycle" first. |
 
 **Freeing IRAM on ESP32-S3:**
 
-ESP-IDF Kconfig options must go through `sdkconfig_options` — `-DCONFIG_*`
+ESP-IDF Kconfig options must go through `sdkconfig_options` - `-DCONFIG_*`
 flags in `platformio_options` are silently ignored. Note: the memory report
-always shows "IRAM 100%", which is normal — the linker fills the dedicated
+always shows "IRAM 100%", which is normal - the linker fills the dedicated
 16 KB IRAM segment first and overflows into DIRAM; the real headroom is on
 the DIRAM line.
 
@@ -352,23 +352,23 @@ esp32:
 
 ## Credits
 
-- **Cyril Jaquier** ([lostcontrol](https://github.com/lostcontrol/esphome-helios-kwl)) — original author, KWL EC 500 R
-- **loicdugay** — T-Panel S3 fork, full read/write support of 40+ registers, boost/fireplace cycles, LVGL interface
-- **Abeer Ash** ([ash-abeer](https://github.com/ash-abeer)) — initial adaptation of the original code to the T-Panel S3 hardware (including the CST3240 touch driver, since replaced by the native ESPHome `cst226` component), commissioned and funded by **loicdugay**
-- **DIGIT protocol** — Vallox / Petteri Kähärä documentation (2011): [original specification (PDF, archived in this repo)](docs/Archive/vallox-digit-protocol-rs485.pdf) · [English translation (markdown)](docs/vallox-digit-protocol-rs485.md) · [FHEM Vallox wiki](https://wiki.fhem.de/wiki/Vallox) · [community copy (Symcon)](https://community.symcon.de/uploads/short-url/fp2ucSqkcPPBqQ4Lc2UWcsJr4Pn.pdf)
+- **Cyril Jaquier** ([lostcontrol](https://github.com/lostcontrol/esphome-helios-kwl)) - original author, KWL EC 500 R
+- **loicdugay** - T-Panel S3 fork, full read/write support of 40+ registers, boost/fireplace cycles, LVGL interface
+- **Abeer Ash** ([ash-abeer](https://github.com/ash-abeer)) - initial adaptation of the original code to the T-Panel S3 hardware (including the CST3240 touch driver, since replaced by the native ESPHome `cst226` component), commissioned and funded by **loicdugay**
+- **DIGIT protocol** - Vallox / Petteri Kähärä documentation (2011): [original specification (PDF, archived in this repo)](docs/Archive/vallox-digit-protocol-rs485.pdf) · [English translation (markdown)](docs/vallox-digit-protocol-rs485.md) · [FHEM Vallox wiki](https://wiki.fhem.de/wiki/Vallox) · [community copy (Symcon)](https://community.symcon.de/uploads/short-url/fp2ucSqkcPPBqQ4Lc2UWcsJr4Pn.pdf)
 
-## ⚠️ Disclaimer — use at your own risk
+## ⚠️ Disclaimer - use at your own risk
 
 This project is community work **provided "AS IS", without warranty of any kind**, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and non-infringement (see the [MIT license](LICENSE)).
 
 **By using this project, you acknowledge and accept that:**
 
 - You are working on **mains-powered ventilation equipment**. Always disconnect power before any wiring work. Hire a qualified professional if in doubt.
-- Writing registers not documented by the manufacturer can **permanently damage your ventilation unit** (the Vallox specification explicitly forbids some registers — this component does not use them, but any modification of the code is your own responsibility).
+- Writing registers not documented by the manufacturer can **permanently damage your ventilation unit** (the Vallox specification explicitly forbids some registers - this component does not use them, but any modification of the code is your own responsibility).
 - Using this project may **void the manufacturer's warranty** of your equipment.
-- To the maximum extent permitted by applicable law, the authors and contributors **shall not be liable for any damages** — direct, indirect, incidental, consequential or special (equipment or installation damage, loss of use, replacement or repair costs, personal injury…) — arising from the use of, or inability to use, this software and its documentation, even if advised of the possibility of such damages.
+- To the maximum extent permitted by applicable law, the authors and contributors **shall not be liable for any damages** - direct, indirect, incidental, consequential or special (equipment or installation damage, loss of use, replacement or repair costs, personal injury…) - arising from the use of, or inability to use, this software and its documentation, even if advised of the possibility of such damages.
 - This is an **independent** project: it is not affiliated with, endorsed or supported by Helios Ventilatoren, Vallox Oy or LilyGO. All trademarks belong to their respective owners.
 
 ## License
 
-Distributed under the [MIT](LICENSE) license. You are free to use, modify and redistribute it, provided the copyright notice is kept — and the warranty disclaimer above is an integral part of it.
+Distributed under the [MIT](LICENSE) license. You are free to use, modify and redistribute it, provided the copyright notice is kept - and the warranty disclaimer above is an integral part of it.
