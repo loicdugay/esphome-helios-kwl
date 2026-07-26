@@ -7,6 +7,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Re-validation hebdomadaire : ESPHome sort une version par mois et
+  # renomme/retire regulierement des options YAML. Ce rendez-vous du lundi
+  # matin previent d'une rupture en amont avant qu'un utilisateur ne la
+  # decouvre, meme sans commit de notre cote.
+  schedule:
+    - cron: "0 6 * * 1"
   workflow_dispatch:
 
 jobs:
