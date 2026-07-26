@@ -1,2 +1,6 @@
-*.png filter=lfs diff=lfs merge=lfs -text
-*.jpg filter=lfs diff=lfs merge=lfs -text
+# Les images sont stockees en blobs git classiques (PAS en LFS) : elles sont
+# petites (~660 Ko au total) et servies directement dans le README. Git LFS
+# aurait consomme le quota de bande passante GitHub (1 Gio/mois offert), au
+# risque de casser l'affichage des images ET les clones une fois epuise.
+*.png binary
+*.jpg binary

@@ -275,19 +275,20 @@ font:
     id: mont_12
     size: 12
     bpp: 4
-    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-éèêëàâîïôûùçÉÈÊÀÎÔÛÇ"
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-()+’«»–éèêëàâîïôûùçœÉÈÊËÀÂÎÏÔÛÙÇŒ"
 
   - file: "gfonts://Montserrat@500"
     id: mont_14
     size: 14
     bpp: 4
-    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-éèêëàâîïôûùçÉÈÊÀÎÔÛÇ"
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 %°?!'./:,-()+’«»–éèêëàâîïôûùçœÉÈÊËÀÂÎÏÔÛÙÇŒ"
 
+  # Uniquement les valeurs de la grille de mesures ("21°", "45%", "--°")
   - file: "gfonts://Montserrat@600"
     id: mont_18
     size: 18
     bpp: 4
-    glyphs: "0123456789 %°.,-INTSOUFLECBRDdbmoisax"
+    glyphs: "0123456789 -.,%°"
 
 # ═══════════════════════════════════════════════════════════════════
 # 6. HORLOGE — SNTP + header heure/date

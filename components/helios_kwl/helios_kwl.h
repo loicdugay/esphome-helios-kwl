@@ -172,7 +172,7 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   std::array<uint8_t, 256> last_value_{};
   std::array<bool, 256> has_value_{};
 
-  static constexpr size_t S2_TABLE_SIZE = 8;
+  static constexpr size_t S2_TABLE_SIZE = 12;
   static constexpr size_t S3_TABLE_SIZE = 24;
   std::array<PollTask, S2_TABLE_SIZE> s2_tasks_{};
   size_t s2_count_{0}, s2_index_{0};
@@ -224,6 +224,14 @@ class HeliosKwlComponent : public uart::UARTDevice, public PollingComponent {
   void wait_bus_silence();
   bool do_one_s2_poll();
   bool do_one_s3_poll();
+  // Ajout borne d'une tache de poll : ignore silencieusement au-dela de la
+  // capacite de la table plutot que d'ecrire hors limites.
+  void add_s2_task_(uint8_t reg, uint32_t interval) {
+    if (s2_count_ < S2_TABLE_SIZE) s2_tasks_[s2_count_++] = {reg, interval, 0};
+  }
+  void add_s3_task_(uint8_t reg, uint32_t interval) {
+    if (s3_count_ < S3_TABLE_SIZE) s3_tasks_[s3_count_++] = {reg, interval, 0};
+  }
   void schedule_verify(uint8_t reg);
   void check_verify_(uint8_t reg, uint8_t value);
 

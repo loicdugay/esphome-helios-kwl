@@ -1,8 +1,15 @@
-// helios_kwl.cpp — Reecriture propre
+// helios_kwl.cpp — composant Helios KWL / Vallox (protocole DIGIT RS485)
+//
 // 4 primitives : read_register, write_register, write_bit, write_bits_masked
-// write_bit utilise last_value_ si disponible (valeur du dernier poll S2, comme la vraie telecommande).
-// write_register n'effectue pas de verification : la capture bus montre que la vraie telecommande
-// ecrit et passe immediatement au poll suivant sans re-lire le registre.
+//
+// - read_register  : attend le silence bus puis extrait la reponse du FLUX
+//                    (un broadcast intercale ne fait pas echouer la lecture)
+// - write_register : sequence 3 ou 4 messages (broadcast RC -> broadcast CM ->
+//                    direct CM, CRC double sur le dernier) comme la telecommande
+//                    physique, puis planifie une RELECTURE DE VERIFICATION au
+//                    poll suivant -> logs [CMD] (ordre envoye) / [CM] (reponse)
+// - write_bit      : modifie un bit a partir de la derniere valeur lue par les
+//                    polls (comme la telecommande), delegue a write_register
 
 #include "helios_kwl.h"
 #include "esphome/core/log.h"
@@ -56,65 +63,65 @@ void HeliosKwlComponent::setup() {
   // configurees dans le YAML : aucun trafic bus pour un registre
   // dont personne ne consomme la valeur.
   s2_count_ = 0;
-  s2_tasks_[s2_count_++] = {REG_FAN_SPEED, POLL_INTERVAL_S2, 0};   // fan + vitesse
-  s2_tasks_[s2_count_++] = {REG_STATES,    POLL_INTERVAL_S2, 0};   // power/modes/sante
+  add_s2_task_(REG_FAN_SPEED, POLL_INTERVAL_S2);   // fan + vitesse
+  add_s2_task_(REG_STATES, POLL_INTERVAL_S2);   // power/modes/sante
   if (bypass_open_ || supply_fan_running_ || exhaust_fan_running_ || preheating_active_ ||
       external_contact_ || fault_relay_)
-    s2_tasks_[s2_count_++] = {REG_IO_PORT, POLL_INTERVAL_S2, 0};
-  s2_tasks_[s2_count_++] = {REG_BOOST_STATE, POLL_INTERVAL_S2, 0};  // requis par les boutons cycle
+    add_s2_task_(REG_IO_PORT, POLL_INTERVAL_S2);
+  add_s2_task_(REG_BOOST_STATE, POLL_INTERVAL_S2);  // requis par les boutons cycle
   if (boost_remaining_)
-    s2_tasks_[s2_count_++] = {REG_BOOST_REMAINING, POLL_INTERVAL_S2, 0};
+    add_s2_task_(REG_BOOST_REMAINING, POLL_INTERVAL_S2);
   if (co2_alarm_ || freeze_alarm_ || fault_indicator_sensor_)
-    s2_tasks_[s2_count_++] = {REG_ALARMS, POLL_INTERVAL_S2, 0};
+    add_s2_task_(REG_ALARMS, POLL_INTERVAL_S2);
   if (humidity_sensor1_)
-    s2_tasks_[s2_count_++] = {REG_HUMIDITY1, POLL_INTERVAL_S2, 0};
+    add_s2_task_(REG_HUMIDITY1, POLL_INTERVAL_S2);
   if (humidity_sensor2_)
-    s2_tasks_[s2_count_++] = {REG_HUMIDITY2, POLL_INTERVAL_S2, 0};
+    add_s2_task_(REG_HUMIDITY2, POLL_INTERVAL_S2);
 
   s3_count_ = 0;
   if (fault_code_ || fault_description_ || fault_indicator_sensor_)
-    s3_tasks_[s3_count_++] = {REG_FAULT_CODE, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_FAULT_CODE, POLL_INTERVAL_S3);
   if (service_months_)
-    s3_tasks_[s3_count_++] = {REG_SERVICE_MONTHS, POLL_INTERVAL_S3, 0};
-  s3_tasks_[s3_count_++] = {REG_PROGRAM_VARS, POLL_INTERVAL_S3, 0};  // requis par cycles + selects
+    add_s3_task_(REG_SERVICE_MONTHS, POLL_INTERVAL_S3);
+  add_s3_task_(REG_PROGRAM_VARS, POLL_INTERVAL_S3);  // requis par cycles + selects
   if (basic_fan_speed_n_)
-    s3_tasks_[s3_count_++] = {REG_BASIC_SPEED, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_BASIC_SPEED, POLL_INTERVAL_S3);
   if (max_fan_speed_n_)
-    s3_tasks_[s3_count_++] = {REG_MAX_SPEED, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_MAX_SPEED, POLL_INTERVAL_S3);
   if (bypass_temp_n_)
-    s3_tasks_[s3_count_++] = {REG_BYPASS_TEMP, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_BYPASS_TEMP, POLL_INTERVAL_S3);
   if (preheating_temp_n_)
-    s3_tasks_[s3_count_++] = {REG_DEFROST_TEMP, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_DEFROST_TEMP, POLL_INTERVAL_S3);
   if (frost_alarm_temp_n_)
-    s3_tasks_[s3_count_++] = {REG_FROST_ALARM_TEMP, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_FROST_ALARM_TEMP, POLL_INTERVAL_S3);
   if (frost_hysteresis_n_)
-    s3_tasks_[s3_count_++] = {REG_FROST_HYSTERESIS, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_FROST_HYSTERESIS, POLL_INTERVAL_S3);
   if (supply_fan_pct_n_)
-    s3_tasks_[s3_count_++] = {REG_SUPPLY_FAN_PCT, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_SUPPLY_FAN_PCT, POLL_INTERVAL_S3);
   if (exhaust_fan_pct_n_)
-    s3_tasks_[s3_count_++] = {REG_EXHAUST_FAN_PCT, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_EXHAUST_FAN_PCT, POLL_INTERVAL_S3);
   if (co2_setpoint_n_) {
-    s3_tasks_[s3_count_++] = {REG_CO2_SETPOINT_H, POLL_INTERVAL_S3, 0};
-    s3_tasks_[s3_count_++] = {REG_CO2_SETPOINT_L, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_CO2_SETPOINT_H, POLL_INTERVAL_S3);
+    add_s3_task_(REG_CO2_SETPOINT_L, POLL_INTERVAL_S3);
   }
   if (humidity_setpoint_n_)
-    s3_tasks_[s3_count_++] = {REG_HUMIDITY_SET, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_HUMIDITY_SET, POLL_INTERVAL_S3);
   if (service_interval_n_)
-    s3_tasks_[s3_count_++] = {REG_SERVICE_INTERVAL, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_SERVICE_INTERVAL, POLL_INTERVAL_S3);
   if (max_speed_cont_sel_)
-    s3_tasks_[s3_count_++] = {REG_PROGRAM2, POLL_INTERVAL_S3, 0};
+    add_s3_task_(REG_PROGRAM2, POLL_INTERVAL_S3);
 
   // Filet de securite temperatures : diffusees toutes les 12 s par le maitre,
   // mais le broadcast s'arrete VMC eteinte (elle repond toujours aux READ,
   // Annexe B). Un poll lent garantit des valeurs fraiches dans tous les cas.
   if (temperature_outside_)
-    s3_tasks_[s3_count_++] = {REG_TEMP_OUTSIDE, POLL_INTERVAL_TEMP_FALLBACK, 0};
+    add_s3_task_(REG_TEMP_OUTSIDE, POLL_INTERVAL_TEMP_FALLBACK);
   if (temperature_exhaust_)
-    s3_tasks_[s3_count_++] = {REG_TEMP_EXHAUST, POLL_INTERVAL_TEMP_FALLBACK, 0};
+    add_s3_task_(REG_TEMP_EXHAUST, POLL_INTERVAL_TEMP_FALLBACK);
   if (temperature_extract_)
-    s3_tasks_[s3_count_++] = {REG_TEMP_EXTRACT, POLL_INTERVAL_TEMP_FALLBACK, 0};
+    add_s3_task_(REG_TEMP_EXTRACT, POLL_INTERVAL_TEMP_FALLBACK);
   if (temperature_supply_)
-    s3_tasks_[s3_count_++] = {REG_TEMP_SUPPLY, POLL_INTERVAL_TEMP_FALLBACK, 0};
+    add_s3_task_(REG_TEMP_SUPPLY, POLL_INTERVAL_TEMP_FALLBACK);
 
   // Force tous S3 "dus" au boot
   uint32_t bt = millis();

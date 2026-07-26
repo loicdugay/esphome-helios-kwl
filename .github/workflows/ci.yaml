@@ -1,0 +1,50 @@
+# Validation automatique de la configuration ESPHome.
+# Attrape les ruptures de schema (mise a jour d'ESPHome, edition du YAML)
+# avant qu'elles n'atterrissent chez les utilisateurs.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Valider vmc.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer ESPHome
+        run: pip install --quiet esphome
+
+      - name: Generer un secrets.yaml de test
+        run: |
+          cat > secrets.yaml <<SECRETS
+          wifi_ssid: "ci-test"
+          wifi_password: "ci-test-password"
+          api_key: "$(openssl rand -base64 32)"
+          ota_password: "ci-test"
+          ap_password: "ci-test-password"
+          SECRETS
+
+      - name: Valider le composant de CETTE revision (et non celui publie)
+        run: |
+          python - <<'PY'
+          import pathlib, re
+          p = pathlib.Path("vmc.yaml")
+          s = p.read_text(encoding="utf-8")
+          s = re.sub(
+              r"external_components:.*?refresh: \S+\n",
+              "external_components:\n  - source:\n      type: local\n      path: components\n",
+              s, count=1, flags=re.S)
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: esphome config
+        run: esphome config vmc.yaml
