@@ -39,10 +39,12 @@ jobs:
           import pathlib, re
           p = pathlib.Path("vmc.yaml")
           s = p.read_text(encoding="utf-8")
-          s = re.sub(
+          s, n = re.subn(
               r"external_components:.*?refresh: \S+\n",
               "external_components:\n  - source:\n      type: local\n      path: components\n",
               s, count=1, flags=re.S)
+          # Echoue bruyamment plutot que de valider le composant publie
+          assert n == 1, "bloc external_components introuvable : adapter ce script"
           p.write_text(s, encoding="utf-8")
           PY
 
